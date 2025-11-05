@@ -2,6 +2,7 @@
 
 import { initGPU } from './core/gpuDevice.js';
 import { rand } from './utils/rand.js';
+import { createCircleVertices } from './utils/circleMesh.js';
 
 async function main()
 {
@@ -48,7 +49,7 @@ async function main()
 
     const kScaleOffset = 0; // after 4 (0 when split) colour values
 
-    const kNumObjects = 100;
+    const kNumObjects = 50;
     const objectInfos = [];
     
     // create 2 storage buffers
@@ -66,6 +67,20 @@ async function main()
         size: staticStorageBufferSize,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
+
+    const { vertexData, numVertices } = createCircleVertices({
+        radius: 0.5,
+        innerRadius: 0.0,
+        numSubdivisions: 50,
+    });
+
+    const vertexStorageBuffer = device.createBuffer({
+        label: 'vertex buffer',
+        size: vertexData.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+
+    device.queue.writeBuffer(vertexStorageBuffer, 0, vertexData);
     
     const changingStorageBuffer = device.createBuffer({
         label: 'changing storage for objects',
@@ -98,6 +113,7 @@ async function main()
         entries: [
         { binding: 0, resource: { buffer: staticStorageBuffer }},
         { binding: 1, resource: { buffer: changingStorageBuffer }},
+        { binding: 2, resource: { buffer: vertexStorageBuffer }},
         ],
     });
 
@@ -122,8 +138,8 @@ async function main()
         device.queue.writeBuffer(changingStorageBuffer, 0, storageValues);
     
         pass.setBindGroup(0, bindGroup);
-        pass.draw(3, kNumObjects);  // call our vertex shader 3 times for each instance
-
+        //pass.draw(3, kNumObjects);  // call our vertex shader 3 times for each instance
+        pass.draw(numVertices, kNumObjects);
         pass.end();
 
         const commandBuffer = encoder.finish();
@@ -146,75 +162,8 @@ async function main()
 
 }; 
 
-async function otherMain(){
-    
-    const adapter = await navigator.gpu?.requestAdapter();
-    const device = await adapter.requestDevice();
 
-    let shaderCode = await(await fetch('src/shaders/compute.wgsl')).text();
-
-    const module = device.createShaderModule({
-        label: 'doubling',
-        code: shaderCode
-    });
-
-    const pipeline = device.createComputePipeline({
-        label: 'doubling',
-        layout: 'auto',
-        compute: {
-            module,
-        },
-    });
-
-    const input = new Float32Array([1, 3, 5]);
-
-    const workBuffer = device.createBuffer({
-        label: 'work buffer',
-        size: input.byteLength,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-    });
-    
-
-    const resultBuffer = device.createBuffer({
-        label: 'result buffer',
-        size: input.byteLength,
-        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
-    });
-
-    device.queue.writeBuffer(workBuffer, 0, input);
-
-    const bindGroup = device.createBindGroup({
-        label: 'bindGroup for work buffer',
-        layout: pipeline.getBindGroupLayout(0),
-        entries: [
-        { binding: 0, resource: { buffer: workBuffer } },
-        ],
-    })
-
-    const encoder = device.createCommandEncoder({label: 'encoder'});
-    const pass = encoder.beginComputePass({label: 'compute pass'})
-
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bindGroup)
-    pass.dispatchWorkgroups(input.length);
-    pass.end();
-
-    encoder.copyBufferToBuffer(workBuffer, 0, resultBuffer, 0, resultBuffer.size);
-
-    const commandBuffer = encoder.finish();
-    device.queue.submit([commandBuffer]);
-
-    await resultBuffer.mapAsync(GPUMapMode.READ);
-    const result = new Float32Array(resultBuffer.getMappedRange());
-
-    console.log('input', input);
-    console.log('result', result);
-
-    resultBuffer.unmap();
-
-}
 
 //document.getElementById('debug').innerHTML = ""
 
 main()
-otherMain()
