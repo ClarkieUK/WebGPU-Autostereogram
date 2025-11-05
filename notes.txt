@@ -1,0 +1,45 @@
+get pc properties , adapter and device.
+
+get the canvas and define its properties
+
+setup shader modules, use them in a pipeline
+
+setup a dict that holds the behaviour of the render pass
+
+set the view to the context == canvas
+
+make an encoder to send commands to the GPU 
+
+finish the encoder to a buffer 
+
+send buffer to device 
+
+
+
+
+////////////
+
+in a vertex shader @builtin(position) is an output that tells the gpu 
+where to draw geometry
+
+in a fragment shader it is an input, the pixel coord of the pixel that 
+the fragment shader is being asked to compute
+
+src/
+    main.js                     
+    core/
+        gpuDevice.js            
+        shaderLoader.js         // Fetch + compile WGSL
+        pipelineManager.js      // Builds render/compute pipelines
+        bufferUtils.js          // GPU buffer creation helpers
+        textureUtils.js         // Texture creation, mipmaps, etc.
+    scenes/
+        renderScene.js          // Render pass logic
+        computeScene.js         // Compute example (like your otherMain)
+        objectFactory.js        // Creates drawable “entities” or objects
+    shaders/
+        gpu_fundamentals.wgsl
+        compute.wgsl
+    utils/
+        rand.js                 // random number helpers
+        resizeObserver.js       // Canvas resize observer
