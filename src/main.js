@@ -60,12 +60,12 @@ async function main(){
     const hdelta = 1 / kTextureWidth;
     const vdelta = 1 / kTextureHeight;
 
-    const baseline = [0.16,0.0,0.0]
+    const baseline = [0.66,0.0,0.0]
     
     const leftEye = [0.5 - baseline[0]/2, 0.5, -2]
     const rightEye = [0.5 + baseline[0]/2, 0.5, -2]
 
-    let planeZ = 5;// +Z IS INTO THE SCREEN, IDK WHY ITS ONLY NICE WHEN PZ > 0
+    let planeZ = 1;// +Z IS INTO THE SCREEN, IDK WHY ITS ONLY NICE WHEN PZ > 0
     let planeBoundLower = 0.3
     let planeBoundUpper = 0.6
 
