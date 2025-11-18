@@ -15,7 +15,7 @@ struct OurVertexShaderOutput {
 @vertex
 fn vs(vsInput: OurVertexShaderInput) -> OurVertexShaderOutput 
 {
-    let pos = array(
+    /*let pos = array(
     // 1st triangle
     vec2f( 0.0,  0.0),  // center
     vec2f( 1.0,  0.0),  // right, center
@@ -25,13 +25,25 @@ fn vs(vsInput: OurVertexShaderInput) -> OurVertexShaderOutput
     vec2f( 0.0,  1.0),  // center, top
     vec2f( 1.0,  0.0),  // right, center
     vec2f( 1.0,  1.0),  // right, top
+    );*/
+
+    let pos = array(
+    // 1st triangle
+    vec2f( -1.0,  -1.0),  // center
+    vec2f( 1.0,  -1.0),  // right, center
+    vec2f( 1.0,  1.0),  // center, top
+ 
+    // 2nd triangle
+    vec2f( -1.0,  -1.0),  // center, top
+    vec2f( 1.0,  1.0),  // right, center
+    vec2f( -1.0,  1.0),  // right, top
     );
 
     let xy = pos[vsInput.vertexIndex];
 
     var vsOutput: OurVertexShaderOutput;
     vsOutput.position = vec4f(xy, 0.0, 1.0);
-    vsOutput.texcoord = xy;
+    vsOutput.texcoord = (xy+1)/2;
 
     return vsOutput;
 }

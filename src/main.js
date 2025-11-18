@@ -31,8 +31,8 @@ async function main(){
     })
 
     // texture data
-    const kTextureWidth = 400;
-    const kTextureHeight = 400;
+    const kTextureWidth = 500;
+    const kTextureHeight = 500;
     const _ = [255, 0, 0, 255];
     const y = [255, 255, 0, 255];
     const b = [0, 0, 255, 255];
@@ -60,14 +60,14 @@ async function main(){
     const hdelta = 1 / kTextureWidth;
     const vdelta = 1 / kTextureHeight;
 
-    const baseline = [0.12,0.0,0.0]
+    const baseline = [0.16,0.0,0.0]
     
-    const leftEye = [0.5 - baseline[0]/2, 0.5, -3]
-    const rightEye = [0.5 + baseline[0]/2, 0.5, -3]
+    const leftEye = [0.5 - baseline[0]/2, 0.5, -2]
+    const rightEye = [0.5 + baseline[0]/2, 0.5, -2]
 
-    let planeZ = 2;
+    let planeZ = 5;// +Z IS INTO THE SCREEN, IDK WHY ITS ONLY NICE WHEN PZ > 0
     let planeBoundLower = 0.3
-    let planeBoundUpper = 0.7
+    let planeBoundUpper = 0.6
 
     const screenZ = 0;
     // take a snapshot of the original texture data to read from while writing into `data`
@@ -97,16 +97,9 @@ async function main(){
             let hitY = hitPoint[1];
 
             if (hitX >= planeBoundLower && hitX <= planeBoundUpper &&
-                hitY >= planeBoundLower && hitY <= planeBoundUpper)
+                hitY >= planeBoundLower+0.2 && hitY <= planeBoundUpper+0.3)
             {
                 let leftIndex = (i * kTextureWidth + j) * 4 // gone through i rows and j columns of 4 colour values;
-
-                /*// debug
-                data[leftIndex] = 255;     // R
-                data[leftIndex + 1] = 0;   // G  
-                data[leftIndex + 2] = 0;   // B
-                data[leftIndex + 3] = 255; // A
-                continue; */
 
                 // go to same hitpoint with right eye ray
                 let rayDirR = hitPoint.map((v, idx) => v - rightEye[idx]);
@@ -117,22 +110,21 @@ async function main(){
                 let tR = (screenZ - rightEye[2]) / rayDirR[2];
                 let pixelScreenR = rayDirR.map((v, idx) => rightEye[idx] + tR * v);
 
-                //pixelScreenR = pixelScreenR.map((e,i) => Math.round(e * 1000) / 1000)
-
-                pixelScreenR[0] = (kTextureWidth * pixelScreenR[0] + 1/2) * 1/kTextureWidth
-                pixelScreenR[1] = (kTextureHeight * pixelScreenR[1] + 1/2) * 1/kTextureHeight
-
                 // use floor mapping to get integer texel coords
-                let jR = Math.floor(pixelScreenR[0] / hdelta); // remove 1+2 factor (1.5 -> 1 | 0.495/0.33 -> 1, for 3x3 grid)
-                let iR = Math.floor(pixelScreenR[1] / vdelta);
+                let jR = Math.floor((pixelScreenR[0] / hdelta)); // remove 1+2 factor (1.5 -> 1 | 0.495/0.33 -> 1, for 3x3 grid)
+                let iR = Math.floor((pixelScreenR[1] / vdelta));
+
+                pixelScreenR[0] = (jR+1/2) * hdelta; // dont really need these but nice to have I guess?
+                pixelScreenR[1] = (iR+1/2) * vdelta;
 
                 if (jR >= 0 && jR < kTextureWidth && iR >= 0 && iR < kTextureHeight) { // for a 3x3 grid i,j are in [0,1,2]
                     let rightIndex = (iR * kTextureWidth + jR) * 4; // 4 values for each point on row and up to jR in column
 
                     for (let k = 0; k < 4; k++) {
-                        data[leftIndex + k] = originalData[rightIndex + k];
+                        data[rightIndex + k] = originalData[leftIndex + k];
+                        
                         //data[leftIndex + k] = 0
-                        //data[rightIndex + k] = 0
+                        //data[rightIndex + k] = 170
                     }
                 } else {
                     
