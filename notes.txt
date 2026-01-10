@@ -1,45 +1,26 @@
-get pc properties , adapter and device.
+// General Notes
 
-get the canvas and define its properties
+- The adapter simply represents the a specific hardware GPU in our program
+- The device represents how the GPU will interface with webGPU via commands, they are buffered and
+    executed via the device.
 
-setup shader modules, use them in a pipeline
+- Drawing position in wgsl are in the clip space which ranges from x{-1,1} y{-1,1}.
 
-setup a dict that holds the behaviour of the render pass
+// In shaders
 
-set the view to the context == canvas
+- Things that have assigned locations are interstage variables and are passed between the vertex and fragment shader
+    but typically in a vertex and fragment shader you may see things like @builtin(position), these builtins can be common
+    to the vertex and fragment shader but represent different things, they just happen to share the same name.
 
-make an encoder to send commands to the GPU 
+- In the vertex shader @builtin(position) represents the coordinate you provide used to draw primatives
 
-finish the encoder to a buffer 
+- In the fragment shader its an input and represents the pixel coord that the fragment shader is currently being asked to assign
+    a color to.
 
-send buffer to device 
+// The General Workflow
 
+- Commands are not executed on the device via the encoder until they are submitted.
 
+- Create a shader module with wgsl, then define a pipeline that uses the different shader components and defines a target
+- the pipeline is then used to define bindgroups 
 
-
-////////////
-
-in a vertex shader @builtin(position) is an output that tells the gpu 
-where to draw geometry
-
-in a fragment shader it is an input, the pixel coord of the pixel that 
-the fragment shader is being asked to compute
-
-src/
-    main.js                     
-    core/
-        gpuDevice.js            
-        shaderLoader.js         // Fetch + compile WGSL
-        pipelineManager.js      // Builds render/compute pipelines
-        bufferUtils.js          // GPU buffer creation helpers
-        textureUtils.js         // Texture creation, mipmaps, etc.
-    scenes/
-        renderScene.js          // Render pass logic
-        computeScene.js         // Compute example (like your otherMain)
-        objectFactory.js        // Creates drawable “entities” or objects
-    shaders/
-        gpu_fundamentals.wgsl
-        compute.wgsl
-    utils/
-        rand.js                 // random number helpers
-        resizeObserver.js       // Canvas resize observer

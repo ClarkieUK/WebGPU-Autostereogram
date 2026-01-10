@@ -1,246 +1,150 @@
-// @ts-nocheck 
+// @ts-nocheck , typescript has support but programming in js mainly.
 
-import { initGPU } from "./core/gpuDevice";
-import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
-import { rand } from "./utils/rand";
+// imports , shaders, locals, externals
+import code from './shaders/fundamentals.wgsl?raw'; // this works fine with vite... (+?raw)
 
-async function main(){
+import { initWebGPU } from './utils/initWebGPU';
+import { generateObserverCallback } from './utils/initWebGPU';
+import { rand } from './utils/randomNumber';
+import { createCircleVertices } from './circle';
 
-    // init canvas and gpu related shebang
-    const canvas = document.querySelector('canvas')
-    const {device, context, format} = await initGPU(canvas);
+async function main()
+{
 
-    // shader pipeline
-    let shaderCode = await(await fetch('src/shaders/texture.wgsl')).text();
+    const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
-    const textureModule = device.createShaderModule({
-        label: 'texture module',
-        code: shaderCode,
-    })
+    const module = device.createShaderModule({
+        code: code,
+    });
 
     const pipeline = device.createRenderPipeline({
-        label: 'texture pipeline',
         layout: 'auto',
         vertex: {
-            module: textureModule,
+            module,
         },
         fragment: {
-            module: textureModule,
-            targets: [{format: format}]
-        }
-    })
+            module,
+            targets: [{ format: presentationFormat}],
+        },
+    });
 
-    // texture data
-    const kTextureWidth = 500;
-    const kTextureHeight = 500;
+    const kNumObjects = 5;
+    const objectInfos = [];
+
+    const staticUnitSize = 
+    4 * 4 +
+    2 * 4 + 
+    2 * 4; // per primative
+
+    const dynamicUnitSize = 
+    2 * 4 +
+    2 * 4 ;
+
+    const staticStorageBufferSize = staticUnitSize * kNumObjects;
+    const dynamicStorageBufferSize = dynamicUnitSize * kNumObjects;
     
-    const data = [];
+    const kColorOffset = 0;  // color first
+    const kOffsetOffset = 4; // after 4 values
 
-    for (let i = 0; i < kTextureWidth * kTextureHeight; i++) {
-        let onOrOff = Math.round(Math.random()) * 255;
+    const kScaleOffset = 0; 
 
-        let idx = Math.round(Math.random() * 2);
-        /*
-        switch (Math.round(Math.random() * 2)) {
-            case 0 :
-                 data.push(onOrOff, 0.0, 0.0, 255);
-            case 1 : 
-                data.push(0.0, onOrOff, 0.0, 255);
-            case 2 : 
-                data.push(0.0, 0.0, onOrOff, 255);
-            
-        }*/
+    const { vertexData, numVertices } = createCircleVertices({
+    radius: 0.5,
+    innerRadius: 0.25,
+    });
 
-        //console.log(idx)
+    const vertexStorageBuffer = device.createBuffer({
+    label: 'storage buffer vertices',
+    size: vertexData.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(vertexStorageBuffer, 0, vertexData);
 
-        data.push(onOrOff, onOrOff, onOrOff, 255);
-    }
+    const staticStorageBuffer = device.createBuffer({
+        label:'static',
+        size: staticStorageBufferSize, // will be 4 values of 4 bytes + 2 values of 4 bytes + 2 values of padding of 4 bytes * number of objects
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
 
+    const dynamicStorageBuffer = device.createBuffer({
+        label:'dynamic',
+        size: dynamicStorageBufferSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
 
-    const hdelta = 1 / kTextureWidth;
-    const vdelta = 1 / kTextureHeight;
+    const staticStorageValues = new Float32Array(staticStorageBufferSize / 4);
 
-    const baseline = [0.66,0.0,0.0]
-    
-    const leftEye = [0.5 - baseline[0]/2, 0.5, -2]
-    const rightEye = [0.5 + baseline[0]/2, 0.5, -2]
-
-    let planeZ = 1;// +Z IS INTO THE SCREEN, IDK WHY ITS ONLY NICE WHEN PZ > 0 // 1 works
-    let planeBoundLower = 0.3 
-    let planeBoundUpper = 0.6
-
-    const screenZ = 0;
-    // take a snapshot of the original texture data to read from while writing into `data`
-    const originalData = data.slice();
-
-    for (let i = 0; i<kTextureHeight; i++) // row
-    {
-        for (let j = 0; j<kTextureWidth; j++) // column
-        {
-            // centre of texel
-            let x = (j+1/2) * hdelta;
-            let y = (i+1/2) * vdelta;
-            let z = screenZ;
-
-            let pixelScreenPosition = [x, y, z];
-
-            // A -> B == B - A
-            let rayDir = pixelScreenPosition.map((v, i) => v - leftEye[i]);
-
-            // avoid inf
-            if (rayDir[2] === 0) continue;
-
-            let t = (planeZ - leftEye[2]) / rayDir[2];
-            let hitPoint = rayDir.map((D, i) => leftEye[i] + t * D);
-
-            let hitX = hitPoint[0];
-            let hitY = hitPoint[1];
-
-            if (hitX >= planeBoundLower && hitX <= planeBoundUpper &&
-                hitY >= planeBoundLower+0.2 && hitY <= planeBoundUpper+0.3)
-            {
-                let leftIndex = (i * kTextureWidth + j) * 4 // gone through i rows and j columns of 4 colour values;
-
-                // go to same hitpoint with right eye ray
-                let rayDirR = hitPoint.map((v, idx) => v - rightEye[idx]);
-
-                if (rayDirR[2] === 0) continue;
-
-                // IMPORTANT: intersect with screenZ (0), not planeZ
-                let tR = (screenZ - rightEye[2]) / rayDirR[2];
-                let pixelScreenR = rayDirR.map((v, idx) => rightEye[idx] + tR * v);
-
-                // use floor mapping to get integer texel coords
-                let jR = Math.floor((pixelScreenR[0] / hdelta)); // remove 1+2 factor (1.5 -> 1 | 0.495/0.33 -> 1, for 3x3 grid)
-                let iR = Math.floor((pixelScreenR[1] / vdelta));
-
-                pixelScreenR[0] = (jR+1/2) * hdelta; // dont really need these but nice to have I guess?
-                pixelScreenR[1] = (iR+1/2) * vdelta;
-
-                if (jR >= 0 && jR < kTextureWidth && iR >= 0 && iR < kTextureHeight) { // for a 3x3 grid i,j are in [0,1,2]
-                    let rightIndex = (iR * kTextureWidth + jR) * 4; // 4 values for each point on row and up to jR in column
-
-                    for (let k = 0; k < 4; k++) {
-                        data[rightIndex + k] = originalData[leftIndex + k];
-                        
-                        data[leftIndex + k] = 0
-                        data[rightIndex + k] = 170
-                    }
-                } else {
-                    
-                    //for (let k = 0; k < 4; k++) {
-                    //    data[leftIndex + k] = 0;
-                    //}
-                }
-            }
-        }
-    }
-    
-    const textureData = new Uint8Array(data)
-
-    const texture = device.createTexture({
-        size: [kTextureWidth, kTextureHeight],
-        format: 'rgba8unorm',
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-    })
-
-    device.queue.writeTexture(
-        { texture },
-        textureData, 
-        { bytesPerRow: kTextureWidth * 4 },
-        { width: kTextureWidth, height: kTextureHeight },
-    )
-
-    // since we want to use multiple samplers , need multiple bind groups
-
-    const bindGroups = [];
-
-    for (let i = 0; i < 8; i++) {
-        
-        const sampler = device.createSampler({
-            addressModeU: (i & 1) ? 'repeat' : 'clamp-to-edge',
-            addressModeV: (i & 2) ? 'repeat' : 'clamp-to-edge',
-            magFilter: (i & 4) ? 'linear' : 'nearest',
+    for (let i = 0; i < kNumObjects; ++i) {
+        const staticOffset = i * (staticUnitSize / 4); // 0, 8 , 16 , 24
+                                                       // 1cr,1cg,1cb,1ca,1px,1py,1pp,1pp,...
+        staticStorageValues.set([rand(), rand(), rand(), 1], staticOffset + kColorOffset);        // set the color
+        staticStorageValues.set([rand(-0.9, 0.9), rand(-0.9, 0.9)], staticOffset + kOffsetOffset);      // set the offset
+ 
+        objectInfos.push({
+            scale: rand(0.2, 0.5),
         });
-        
-        const bindGroup = device.createBindGroup({
-            layout: pipeline.getBindGroupLayout(0),
-            entries: [
-                { binding: 0, resource: sampler },
-                { binding: 1, resource: texture.createView() }
-            ]
-        })
-
-        bindGroups.push(bindGroup)
     }
+    device.queue.writeBuffer(staticStorageBuffer, 0, staticStorageValues);
 
-    // render desciptor
+    const storageValues = new Float32Array(dynamicStorageBufferSize / 4);
+
+    const bindGroup = device.createBindGroup({
+        label: 'b1',
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+            { binding: 0, resource: { buffer: staticStorageBuffer }},
+            { binding: 1, resource: { buffer: dynamicStorageBuffer }},
+            { binding: 2, resource: { buffer: vertexStorageBuffer }},
+        ]
+    })
+
     const renderPassDescriptor = {
-        label: 'our basic canvas renderPass',
         colorAttachments: [
             {
-                view: undefined,
+                view: null,
                 clearValue: [0.3, 0.3, 0.3, 1],
-                loadOp: 'clear',
+                loadOp:'clear',
                 storeOp: 'store',
-            }
-        ]
-    }
-
-    const settings = {
-        addressModeU: 'clamp-to-edge',
-        addressModeV: 'clamp-to-edge',
-        magFilter: 'nearest',
-    }
-
-    const addressOptions = ['repeat', 'clamp-to-edge'];
-    const filterOptions = ['nearest', 'linear'];
-    
-    const gui = new GUI();
-    gui.onChange(render);
-    Object.assign(gui.domElement.style, {right: '', left: '15px'});
-    gui.add(settings, 'addressModeU', addressOptions);
-    gui.add(settings, 'addressModeV', addressOptions);
-    gui.add(settings, 'magFilter', filterOptions);
+            },
+        ],
+    };
 
     function render() {
-        const ndx = (settings.addressModeU === 'repeat' ? 1 : 0) +
-                    (settings.addressModeV === 'repeat' ? 2 : 0) +
-                    (settings.magFilter === 'linear' ? 4 : 0);
-
-        const bindGroup = bindGroups[ndx];
 
         renderPassDescriptor.colorAttachments[0].view =
-            context.getCurrentTexture().createView()
+            context.getCurrentTexture().createView();
 
-        const encoder = device.createCommandEncoder({
-            label: 'render quad encoder',
-        })
+        const encoder = device.createCommandEncoder({});
 
         const pass = encoder.beginRenderPass(renderPassDescriptor);
+
         pass.setPipeline(pipeline);
+
+        const aspect = canvas.width / canvas.height;
+
+        objectInfos.forEach(({scale}, ndx) => {
+            const offset = ndx * (dynamicUnitSize / 4);
+            storageValues.set([scale / aspect, scale], offset + kScaleOffset);
+        });
+
+        device.queue.writeBuffer(dynamicStorageBuffer, 0, storageValues);
+        
         pass.setBindGroup(0, bindGroup);
-        pass.draw(6);
+        pass.draw(numVertices, kNumObjects);
+
         pass.end();
 
         const commandBuffer = encoder.finish();
         device.queue.submit([commandBuffer]);
-    }
 
-    const observer = new ResizeObserver(entries => {
-        for (const entry of entries) {
-            const canvas = entry.target;
-            const width = entry.contentBoxSize[0].inlineSize;
-            const height = entry.contentBoxSize[0].blockSize;
-            canvas.width = Math.max(1, Math.min(width, device.limits.maxTextureDimension2D));
-            canvas.height = Math.max(1, Math.min(height, device.limits.maxTextureDimension2D));
-            // re-render
-            render();
-            }
-        });
+    };
+
+    const observer = new ResizeObserver(
+        generateObserverCallback({ canvas: canvas, device: device, render})
+    );
     observer.observe(canvas);
+
+    console.log('Working...')
 }
 
-main();
-
-// got to magfilter 
+main()
