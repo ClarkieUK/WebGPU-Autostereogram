@@ -27,3 +27,5 @@
 
 - If using a vertex buffer youll have to add a buffers: descriptor inside the pipeline definition so the GPU knows how to unpack the 
     vertex data
+
+- Textures draw bottom to top, so data shuffled initially will be at the bottom of the canvas / drawing surface

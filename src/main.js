@@ -23,25 +23,10 @@ async function main()
             module,
             buffers: [
                 {
-                    arrayStride: 5 * 4, // vertex positions
+                    arrayStride: 4 * 4, // 2 vertex positions -> 2 tex coord positions
                     attributes: [
-                        {shaderLocation: 0, offset: 0, format: 'float32x2'},
-                        {shaderLocation: 4, offset: 8, format: 'float32x3'}
-                    ]
-                },
-                {
-                    arrayStride: 6 * 4, // color (4) + offset (2)
-                    stepMode: 'instance', // every draw call increment by stride so the entire triangle
-                    attributes: [         // vertice set has these values, instead of per vertex data
-                        {shaderLocation: 1, offset: 0, format: 'float32x4'},
-                        {shaderLocation: 2, offset: 16, format: 'float32x2'}
-                    ]
-                },
-                {
-                    arrayStride: 2 * 4, // scale positions
-                    stepMode: 'instance',
-                    attributes: [
-                        {shaderLocation: 3, offset: 0, format: 'float32x2'},
+                        { shaderLocation: 0, offset: 0, format: 'float32x2' },
+                        { shaderLocation: 1, offset: 2 * 4, format: 'float32x2' }
                     ]
                 },
             ]
@@ -52,29 +37,18 @@ async function main()
         },
     });
 
-    const kNumObjects = 5;
-    const objectInfos = [];
+    // texture surface
+    const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
+    
+    vertexData.set([
+    -1, -1,  0, 0,
+    1, -1,  1, 0,
+    1,  1,  1, 1,
 
-    const kColorOffset = 0;
-    const kOffsetOffset = 4;
-
-    const kScaleOffset = 0;
-
-    const staticUnitSize = 
-    4 * 4 +
-    2 * 4; // 4 values of 4 bytes + 2 values of 4 bytes
-
-    const dynamicUnitSize = 
-    2 * 4;
-
-    const staticVertexBufferSize = staticUnitSize * kNumObjects;
-    const dynamicVertexBufferSize = dynamicUnitSize * kNumObjects;
-
-    // Vertex Data
-    const { vertexData, numVertices } = createColoredCircleVertices({
-    radius: 0.5,
-    innerRadius: 0.25,
-    });
+    -1, -1,  0, 0,
+    -1,  1,  0, 1,
+    1,  1,  1, 1,
+    ])
 
     const vertexBuffer = device.createBuffer({
     label: 'vertices',
@@ -84,36 +58,47 @@ async function main()
 
     device.queue.writeBuffer(vertexBuffer, 0, vertexData);
 
+    // texture data
 
-    // Color / Offset Data
-    const staticVertexValues = new Float32Array(staticVertexBufferSize / 4);
+    const kTextureWidth = 5;
+    const kTextureHeight = 7;
+    const _ = [255,   0,   0, 255];  // red
+    const y = [255, 255,   0, 255];  // yellow
+    const b = [  0,   0, 255, 255];  // blue
+    const textureData = new Uint8Array([
+        _, _, _, _, _,
+        _, y, _, _, _,
+        _, y, _, _, _,
+        _, y, y, _, _,
+        _, y, _, _, _,
+        _, y, y, y, _,
+        b, _, _, _, _,
+        ].flat());
 
-    const staticVertexBuffer = device.createBuffer({
-        label:'static',
-        size: staticVertexBufferSize, // will be 4 values of 4 bytes + 2 values of 4 bytes + 2 values of padding of 4 bytes * number of objects
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    const texture = device.createTexture({
+        size: [kTextureWidth, kTextureHeight],
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
     });
 
-    for (let i = 0; i < kNumObjects; ++i) {
-        const staticOffset = i * (staticUnitSize / 4); // 0, 8 , 16 , 24
-                                                       // 1cr,1cg,1cb,1ca,1px,1py,1pp,1pp,...
-        staticVertexValues.set([rand(), rand(), rand(), 1], staticOffset + kColorOffset);        // set the color
-        staticVertexValues.set([rand(-0.9, 0.9), rand(-0.9, 0.9)], staticOffset + kOffsetOffset);      // set the offset
- 
-        objectInfos.push({
-            scale: rand(0.2, 0.5),
-        });
-    }
-    device.queue.writeBuffer(staticVertexBuffer, 0, staticVertexValues);
+    device.queue.writeTexture(
+        { texture },
+        textureData,
+        { bytesPerRow: kTextureWidth * 4 },
+        { width: kTextureWidth, height: kTextureHeight },
+    );
 
-    // Scale Data
-    const vertexScaleValues = new Float32Array(dynamicVertexBufferSize / 4);
+    // sampler
 
-    const dynamicVertexBuffer = device.createBuffer({
-        label:'dynamic',
-        size: dynamicVertexBufferSize,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
+    const sampler = device.createSampler();
+
+    const bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+            { binding: 0, resource: sampler},
+            { binding: 1, resource: texture.createView() },
+        ]
+    })
 
     const renderPassDescriptor = {
         colorAttachments: [
@@ -137,20 +122,11 @@ async function main()
 
         pass.setPipeline(pipeline);
 
-        const aspect = canvas.width / canvas.height;
+        pass.setBindGroup(0, bindGroup);
 
-        objectInfos.forEach(({scale}, ndx) => {
-            const offset = ndx * (dynamicUnitSize / 4);
-            vertexScaleValues.set([scale / aspect, scale], offset + kScaleOffset);
-        });
-
-        device.queue.writeBuffer(dynamicVertexBuffer, 0, vertexScaleValues);
-        
         pass.setVertexBuffer(0, vertexBuffer);
-        pass.setVertexBuffer(1, staticVertexBuffer);
-        pass.setVertexBuffer(2, dynamicVertexBuffer);
 
-        pass.draw(numVertices, kNumObjects);
+        pass.draw(6,1);
 
         pass.end();
 
