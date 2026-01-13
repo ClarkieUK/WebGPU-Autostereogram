@@ -31,3 +31,5 @@
 - Textures draw bottom to top, so data shuffled initially will be at the bottom of the canvas / drawing surface
 
 - Compute ID starts (0,0) top left, (W-1,H-1) bottom right
+
+- Canvas 2D typically has positive y moving downwards, for a (-1,1) top left clip space origin.
