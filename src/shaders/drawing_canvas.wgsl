@@ -3,8 +3,7 @@
 //    @builtin(instance_index) instanceIndex : u32
 //}
 
-@group(0) @binding(0) var aSampler: sampler;
-@group(0) @binding(1) var aTexture: texture_2d<f32>;
+@group(0) @binding(0) var texRead : texture_2d<f32>;
 
 struct Vertex {
     @location(0) position: vec2f,
@@ -20,7 +19,7 @@ struct ourVsOutput {
 
     var output: ourVsOutput;
 
-    output.position = vec4f(vert.position, 0.0, 1.0);
+    output.position = vec4f(vert.position, 0.0, 3.0);
     output.texCoord = vert.texCoord;
 
     return output;
@@ -28,6 +27,9 @@ struct ourVsOutput {
 
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     
-    return textureSample(aTexture, aSampler, fsInput.texCoord);
-    //return vec4f(fsInput.texCoord, 0.0, 1.0);
+    let dims = textureDimensions(texRead);
+    let p = vec2i(fsInput.texCoord * vec2f(dims));
+    return textureLoad(texRead, p, 0);
+
+    //return vec4f(fsInput.texCoord,0.0,1.0);
 }
