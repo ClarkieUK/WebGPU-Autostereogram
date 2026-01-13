@@ -1,18 +1,57 @@
 // @ts-nocheck , typescript has support but programming in js mainly.
 
 // imports , shaders, locals, externals
-import code from './shaders/fundamentals.wgsl?raw'; // this works fine with vite... (+?raw)
+import code from './shaders/drawing_canvas.wgsl?raw'; // this works fine with vite... (+?raw)
+import compute_code from './shaders/generate_storage_texture.wgsl?raw';
 
 import { initWebGPU } from './utils/initWebGPU';
 import { generateObserverCallback } from './utils/initWebGPU';
 import { rand } from './utils/randomNumber';
 import { createCircleVertices , createColoredCircleVertices} from './circle';
 
+
+
 async function main()
 {
 
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
+    const ratio = canvas.width/canvas.height;
+
+    let t = 2560;
+    const texSize = [t, t/ratio];
+
+    // w/h = tw / th
+
+    // texture surface
+    const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
+    
+    vertexData.set([
+    // pos       tex
+    -1, -1,     0, 0,
+     1, -1,     1, 0,
+     1,  1,     1, 1,
+
+    -1, -1,     0, 0,
+    -1,  1,     0, 1,
+     1,  1,     1, 1,
+    ])
+
+    const vertexBuffer = device.createBuffer({
+    label: 'vertices',
+    size: vertexData.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    device.queue.writeBuffer(vertexBuffer, 0, vertexData);
+
+    const storageTex = device.createTexture({
+    size: texSize,
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    });
+
+    // shaders
     const module = device.createShaderModule({
         code: code,
     });
@@ -37,66 +76,29 @@ async function main()
         },
     });
 
-    // texture surface
-    const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
+    const renderBindGroup = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+        { binding: 0, resource: storageTex.createView() },
+    ],
+    });
+
+    const compute_module = device.createShaderModule({
+        code: compute_code,
+    });
     
-    vertexData.set([
-    -1, -1,  0, 0,
-    1, -1,  1, 0,
-    1,  1,  1, 1,
-
-    -1, -1,  0, 0,
-    -1,  1,  0, 1,
-    1,  1,  1, 1,
-    ])
-
-    const vertexBuffer = device.createBuffer({
-    label: 'vertices',
-    size: vertexData.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    const compute_pipeline = device.createComputePipeline({
+        label: 'circles in storage texture',
+        layout: 'auto',
+        compute: {
+        module: compute_module,
+        },
     });
 
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData);
-
-    // texture data
-
-    const kTextureWidth = 5;
-    const kTextureHeight = 7;
-    const _ = [255,   0,   0, 255];  // red
-    const y = [255, 255,   0, 255];  // yellow
-    const b = [  0,   0, 255, 255];  // blue
-    const textureData = new Uint8Array([
-        _, _, _, _, _,
-        _, y, _, _, _,
-        _, y, _, _, _,
-        _, y, y, _, _,
-        _, y, _, _, _,
-        _, y, y, y, _,
-        b, _, _, _, _,
-        ].flat());
-
-    const texture = device.createTexture({
-        size: [kTextureWidth, kTextureHeight],
-        format: 'rgba8unorm',
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-    });
-
-    device.queue.writeTexture(
-        { texture },
-        textureData,
-        { bytesPerRow: kTextureWidth * 4 },
-        { width: kTextureWidth, height: kTextureHeight },
-    );
-
-    // sampler
-
-    const sampler = device.createSampler();
-
-    const bindGroup = device.createBindGroup({
-        layout: pipeline.getBindGroupLayout(0),
+    const computebindGroup = device.createBindGroup({
+        layout: compute_pipeline.getBindGroupLayout(0),
         entries: [
-            { binding: 0, resource: sampler},
-            { binding: 1, resource: texture.createView() },
+            { binding: 0, resource: storageTex.createView() },
         ]
     })
 
@@ -118,11 +120,21 @@ async function main()
 
         const encoder = device.createCommandEncoder({});
 
+        const compute_pass = encoder.beginComputePass();
+
+        compute_pass.setPipeline(compute_pipeline);
+
+        compute_pass.setBindGroup(0, computebindGroup);
+        
+        compute_pass.dispatchWorkgroups(texSize[0], texSize[1]);
+
+        compute_pass.end();
+
         const pass = encoder.beginRenderPass(renderPassDescriptor);
 
         pass.setPipeline(pipeline);
 
-        pass.setBindGroup(0, bindGroup);
+        pass.setBindGroup(0, renderBindGroup);
 
         pass.setVertexBuffer(0, vertexBuffer);
 
