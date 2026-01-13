@@ -7,52 +7,70 @@ import compute_code from './shaders/generate_storage_texture.wgsl?raw';
 import { initWebGPU } from './utils/initWebGPU';
 import { generateObserverCallback } from './utils/initWebGPU';
 import { rand } from './utils/randomNumber';
-import { createCircleVertices , createColoredCircleVertices} from './circle';
-
-
 
 async function main()
 {
 
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
-    const ratio = canvas.width/canvas.height;
+    const texSize = [2560, 1440];
 
-    let t = 2560;
-    const texSize = [t, t/ratio];
+    // w / h = tw / th
 
-    // w/h = tw / th
+    // uniforms
+    const uniformBuffer = device.createBuffer({
+        label: 'vertices',
+        size: 8,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
+    const resolution = new Float32Array(2);
+
+    device.queue.writeBuffer(uniformBuffer, 0, resolution);
 
     // texture surface
     const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
     
     vertexData.set([
     // pos       tex
-    -1, -1,     0, 0,
-     1, -1,     1, 0,
-     1,  1,     1, 1,
+    -0.8, -0.8,     0.0, 0.0,
+     0.8, -0.8,     1, 0,
+     0.8,  0.8,     1, 1,
 
-    -1, -1,     0, 0,
-    -1,  1,     0, 1,
-     1,  1,     1, 1,
-    ])
+    -0.8, -0.8,     0, 0,
+    -0.8,  0.8,     0, 1,
+     0.8,  0.8,     1, 1,
+    ]) // vertices given in clip space coordinate space
 
-    const vertexBuffer = device.createBuffer({
-    label: 'vertices',
+    vertexData.set([
+    //    pos       uv
+     0,   0,       0, 0, 
+     800, 0,       1, 0,
+     800, 800,     1, 1,
+
+     0,   0,       0, 0,
+     0,   800,     0, 1,
+     800, 800,     1, 1,
+    ]) // vertices given in pixel space, weird shape for transformation intuiton
+
+    const canvasRectangleVertexBuffer = device.createBuffer({
+    label: 'rectangle vertices',
     size: vertexData.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
 
-    device.queue.writeBuffer(vertexBuffer, 0, vertexData);
+    device.queue.writeBuffer(canvasRectangleVertexBuffer, 0, vertexData);
 
     const storageTex = device.createTexture({
-    size: texSize,
+    label: 'storage texture',
+    size: texSize, // could move this into render loop so its updated with resized browser
     format: "rgba8unorm",
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
     });
 
     // shaders
     const module = device.createShaderModule({
+        label: 'rectangle geometry shader',
         code: code,
     });
 
@@ -77,26 +95,28 @@ async function main()
     });
 
     const renderBindGroup = device.createBindGroup({
+    label: 'rectangle bind group',
     layout: pipeline.getBindGroupLayout(0),
     entries: [
         { binding: 0, resource: storageTex.createView() },
+        { binding: 1, resource: { buffer: uniformBuffer }}
     ],
     });
 
-    const compute_module = device.createShaderModule({
+    const computeModule = device.createShaderModule({
         code: compute_code,
     });
     
-    const compute_pipeline = device.createComputePipeline({
-        label: 'circles in storage texture',
+    const computePipeline = device.createComputePipeline({
+        label: 'storage texture',
         layout: 'auto',
         compute: {
-        module: compute_module,
+        module: computeModule,
         },
     });
 
     const computebindGroup = device.createBindGroup({
-        layout: compute_pipeline.getBindGroupLayout(0),
+        layout: computePipeline.getBindGroupLayout(0),
         entries: [
             { binding: 0, resource: storageTex.createView() },
         ]
@@ -120,23 +140,29 @@ async function main()
 
         const encoder = device.createCommandEncoder({});
 
-        const compute_pass = encoder.beginComputePass();
+        // send uniforms 
+        resolution.set([canvas.width,canvas.height]);
+        device.queue.writeBuffer(uniformBuffer, 0, resolution);
 
-        compute_pass.setPipeline(compute_pipeline);
+        // generating texture
+        const computePass = encoder.beginComputePass();
 
-        compute_pass.setBindGroup(0, computebindGroup);
+        computePass.setPipeline(computePipeline);
+
+        computePass.setBindGroup(0, computebindGroup);
         
-        compute_pass.dispatchWorkgroups(texSize[0], texSize[1]);
+        computePass.dispatchWorkgroups(texSize[0], texSize[1]);
 
-        compute_pass.end();
+        computePass.end();
 
+        // display texture in world
         const pass = encoder.beginRenderPass(renderPassDescriptor);
 
         pass.setPipeline(pipeline);
 
         pass.setBindGroup(0, renderBindGroup);
 
-        pass.setVertexBuffer(0, vertexBuffer);
+        pass.setVertexBuffer(0, canvasRectangleVertexBuffer);
 
         pass.draw(6,1);
 
@@ -144,7 +170,6 @@ async function main()
 
         const commandBuffer = encoder.finish();
         device.queue.submit([commandBuffer]);
-
     };
 
     const observer = new ResizeObserver(

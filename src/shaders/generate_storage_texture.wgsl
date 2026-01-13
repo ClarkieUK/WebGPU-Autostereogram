@@ -1,24 +1,27 @@
-@group(0) @binding(0) var tex: texture_storage_2d<rgba8unorm, write>;
-
 struct Sphere {
-    centre: vec3f, // then padded with f32
-    radius: f32,
+    centre: vec3f, // then padded with a f32
+    radius: f32,   // starts after 4 * f32 (16 bytes) 
 }; // 32 bytes
 
 struct Plane {
-    normal: vec3f,
-} // 16 bytes
+    normal: vec3f, // then padded with a f32
+    origin: vec3f, // 
+} // rounds to 32 bytes
 
 struct Ray {
     origin: vec3f, // then padded with f32
-    direction: vec3f,
-} // 32 bytes
+    direction: vec3f, 
+} // rounded to 32 bytes
 
 struct Scene {
+    left_eye: vec4f,
+    right_eye: vec4f,
     sphere_count: u32,
     _pad: vec3u,
     sphere: array<Sphere>,
 }
+
+@group(0) @binding(0) var tex: texture_storage_2d<rgba8unorm, write>;
 
 
 fn hash1(p: f32) -> f32 {
@@ -35,29 +38,52 @@ fn hash3(p: f32) -> vec3f {
 
 fn splat(r: f32, color: vec3f) -> vec4f {
 
-    let sigma : f32 = 0.005; 
+    let sigma : f32 = 0.025; 
 
-    let inv_sigma2 = 1.0 / (2.0 * sigma * sigma);
+    //let inv_sigma2 = 1.0 / (2.0 * sigma * sigma);
 
-    let closeness  = exp(-r * r * inv_sigma2);
+    //let closeness  = exp(- 5 * r * r * inv_sigma2);
+
+    //let closeness  = cos(10*r);
+
+    let closeness = 1.3 * exp(-(10 * r * r)/(2 * sigma * sigma)) - 0.20;
 
     return vec4f((closeness) * color, 1.0);
+
 }
 
-@compute @workgroup_size(1) fn cs( @builtin(global_invocation_id) id : vec3u )  {
+
+@compute @workgroup_size(1) 
+fn cs( @builtin(global_invocation_id) id : vec3u )  {
     
-    let color = hash3(534897);
-
-    let size = textureDimensions(tex);
-
+    // useful to have
+    let size = textureDimensions(tex); //.xy 
     let pos = id.xy;
-
-    let centre = vec2f(0.5,0.5);
-    
     let uv  = (vec2f(pos) + 0.5) / vec2f(size); // move to centre of pixels, normalise.
 
+
+    let centre = vec2f(0.5,0.25); 
     let dist = sqrt(dot(uv-centre,uv-centre));
 
-    textureStore(tex, pos, splat(dist, color));
+    textureStore(tex, pos, splat(dist, vec3f(1.0)));
     
 }
+
+/* 
+for (i in len(numSplats)) {
+
+pick random (x,y) on rectangle
+
+find all left eye ray t parameter values, pick minimum t as closest scene intersection point, 
+also find window intersection point (drawing rectangle)
+
+cast right eye ray to that scene intersection point, find smallest t, evaluate position, if missmatch then pass skip.
+find subsequent rectangle intersection point,
+
+this becomes new starting left eye point, continue this process until right eye drawing intersection
+is outside of rectangle 
+
+repeat this process for the leftward direction
+
+}
+*/
