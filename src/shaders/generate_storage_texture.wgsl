@@ -21,7 +21,7 @@ struct Scene {
     sphere: array<Sphere>,
 }
 
-@group(0) @binding(0) var tex: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(0) var<storage, read_write> data: array<f32>;
 
 
 fn hash1(p: f32) -> f32 {
@@ -56,16 +56,9 @@ fn splat(r: f32, color: vec3f) -> vec4f {
 @compute @workgroup_size(1) 
 fn cs( @builtin(global_invocation_id) id : vec3u )  {
     
-    // useful to have
-    let size = textureDimensions(tex); //.xy 
-    let pos = id.xy;
-    let uv  = (vec2f(pos) + 0.5) / vec2f(size); // move to centre of pixels, normalise.
 
-
-    let centre = vec2f(0.5,0.25); 
-    let dist = sqrt(dot(uv-centre,uv-centre));
-
-    textureStore(tex, pos, splat(dist, vec3f(1.0)));
+    let i = id.x;
+    let foo = data[0];
     
 }
 

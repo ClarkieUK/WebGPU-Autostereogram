@@ -8,39 +8,32 @@ import { initWebGPU } from './utils/initWebGPU';
 import { generateObserverCallback } from './utils/initWebGPU';
 import { rand } from './utils/randomNumber';
 
+import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
+
 async function main()
 {
 
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
-    const texSize = [2560, 1440];
+    const gui = new GUI();
 
     // w / h = tw / th
 
     // uniforms
-    const uniformBuffer = device.createBuffer({
+    const rectangleUniformBuffer = device.createBuffer({
         label: 'vertices',
-        size: 8,
+        size: 4 * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    const resolution = new Float32Array(2);
+    const rectangleUniformBufferValues = new Float32Array(4);
+    const resolutionValue = rectangleUniformBufferValues.subarray(0, 2);
+    const translationValue = rectangleUniformBufferValues.subarray(2, 4);
 
-    device.queue.writeBuffer(uniformBuffer, 0, resolution);
+    device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues);
 
     // texture surface
     const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
-    
-    vertexData.set([
-    // pos       tex
-    -0.8, -0.8,     0.0, 0.0,
-     0.8, -0.8,     1, 0,
-     0.8,  0.8,     1, 1,
-
-    -0.8, -0.8,     0, 0,
-    -0.8,  0.8,     0, 1,
-     0.8,  0.8,     1, 1,
-    ]) // vertices given in clip space coordinate space
 
     vertexData.set([
     //    pos       uv
@@ -60,13 +53,6 @@ async function main()
     });
 
     device.queue.writeBuffer(canvasRectangleVertexBuffer, 0, vertexData);
-
-    const storageTex = device.createTexture({
-    label: 'storage texture',
-    size: texSize, // could move this into render loop so its updated with resized browser
-    format: "rgba8unorm",
-    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-    });
 
     // shaders
     const module = device.createShaderModule({
@@ -98,9 +84,14 @@ async function main()
     label: 'rectangle bind group',
     layout: pipeline.getBindGroupLayout(0),
     entries: [
-        { binding: 0, resource: storageTex.createView() },
-        { binding: 1, resource: { buffer: uniformBuffer }}
+        { binding: 0, resource: { buffer: rectangleUniformBuffer }}
     ],
+    });
+
+    const staticStorageBuffer = device.createBuffer({
+    label: 'static storage for objects',
+    size: 64,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
     const computeModule = device.createShaderModule({
@@ -118,7 +109,7 @@ async function main()
     const computebindGroup = device.createBindGroup({
         layout: computePipeline.getBindGroupLayout(0),
         entries: [
-            { binding: 0, resource: storageTex.createView() },
+            { binding: 0, resource: staticStorageBuffer },
         ]
     })
 
@@ -133,6 +124,10 @@ async function main()
         ],
     };
 
+    const settings = {
+    translation: [0, 0],
+    };
+
     function render() {
 
         renderPassDescriptor.colorAttachments[0].view =
@@ -141,8 +136,9 @@ async function main()
         const encoder = device.createCommandEncoder({});
 
         // send uniforms 
-        resolution.set([canvas.width,canvas.height]);
-        device.queue.writeBuffer(uniformBuffer, 0, resolution);
+        resolutionValue.set([canvas.width,canvas.height]);
+        translationValue.set(settings.translation);
+        device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues);
 
         // generating texture
         const computePass = encoder.beginComputePass();
@@ -151,7 +147,7 @@ async function main()
 
         computePass.setBindGroup(0, computebindGroup);
         
-        computePass.dispatchWorkgroups(texSize[0], texSize[1]);
+        computePass.dispatchWorkgroups(1);
 
         computePass.end();
 
@@ -171,6 +167,10 @@ async function main()
         const commandBuffer = encoder.finish();
         device.queue.submit([commandBuffer]);
     };
+
+    gui.onChange(render);
+    gui.add(settings.translation, '0', 0, 1000).name('translation.x');
+    gui.add(settings.translation, '1', 0, 1000).name('translation.y');
 
     const observer = new ResizeObserver(
         generateObserverCallback({ canvas: canvas, device: device, render})

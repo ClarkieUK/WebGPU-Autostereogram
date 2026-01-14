@@ -4,11 +4,11 @@
 //}
 
 struct Uniforms {
-  resolution: vec2f,
+    resolution: vec2f,
+    translation: vec2f,
 };
 
-@group(0) @binding(0) var texRead: texture_2d<f32>;
-@group(0) @binding(1) var<uniform> uniforms: Uniforms;
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 struct Vertex {
     @location(0) position: vec2f,
@@ -22,9 +22,7 @@ struct ourVsOutput {
 
 @vertex fn vs(vert: Vertex) -> ourVsOutput {
 
-    let foo = uniforms.resolution;
-
-    var position = vert.position;              // input as pixel values
+    var position = vert.position + uniforms.translation;              // input as pixel values
     position = position / uniforms.resolution; // move to between 0 and 1
     position = position * 2.0;                 // between 0 and 2 
     position = position - 1.0;                 // between -1 and 1
@@ -38,9 +36,5 @@ struct ourVsOutput {
 
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     
-    let dims = textureDimensions(texRead);
-    let p = vec2i(fsInput.texCoord * vec2f(dims));
-    return textureLoad(texRead, p, 0); // scale the normalised coords into the sample space of the texture size
-
-    //return vec4f(fsInput.texCoord,0.0,1.0);
+    return vec4f(fsInput.texCoord,0.0,1.0);
 }
