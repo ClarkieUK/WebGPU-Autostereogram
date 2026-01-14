@@ -1,8 +1,8 @@
 // @ts-nocheck , typescript has support but programming in js mainly.
 
 // imports , shaders, locals, externals
-import code from './shaders/drawing_canvas.wgsl?raw'; // this works fine with vite... (+?raw)
-import compute_code from './shaders/generate_storage_texture.wgsl?raw';
+import code from './shaders/drawingCanvas.wgsl?raw'; // this works fine with vite... (+?raw)
+import compute_code from './shaders/generateEpipolars.wgsl?raw';
 
 import { initWebGPU } from './utils/initWebGPU';
 import { generateObserverCallback } from './utils/initWebGPU';
@@ -169,8 +169,8 @@ async function main()
     };
 
     gui.onChange(render);
-    gui.add(settings.translation, '0', 0, 1000).name('translation.x');
-    gui.add(settings.translation, '1', 0, 1000).name('translation.y');
+    gui.add(settings.translation, '0', 0, 1920).name('translation.x');
+    gui.add(settings.translation, '1', 0, 1080).name('translation.y');
 
     const observer = new ResizeObserver(
         generateObserverCallback({ canvas: canvas, device: device, render})

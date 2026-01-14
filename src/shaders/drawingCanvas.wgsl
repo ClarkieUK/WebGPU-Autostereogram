@@ -36,5 +36,5 @@ struct ourVsOutput {
 
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     
-    return vec4f(fsInput.texCoord,0.0,1.0);
+    return vec4f(fsInput.texCoord,1.0,1.0);
 }
