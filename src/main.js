@@ -24,9 +24,6 @@ async function main()
 
     // w / h = tw / th
 
-    const recWidth =  1.0;
-    const recHeight = 1.0;
-
     // uniforms
     const rectangleUniformBuffer = device.createBuffer({
         label: 'uniforms',
@@ -39,8 +36,6 @@ async function main()
     const translationValue = rectangleUniformBufferValues.subarray(2, 4);
     const dimValue = rectangleUniformBufferValues.subarray(4, 6);
 
-    // Set dim to world-space size of rectangle
-    dimValue.set([1.0, 1.0]);
 
     device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues); 
 
@@ -51,30 +46,23 @@ async function main()
     });
 
     const m = mat4.identity();
-    const t = mat4.translate(m, [0.0, 0, 0]);    // operate t first so its applied last
-    const s = mat4.scale(t, [1, 1, 1]);  
-    const r = mat4.rotateZ(s, Math.PI * 45.0/180);    // act on t with r, its applied first in the context of the vertex multiplication 
-    const model_matrix = r;
-    // m * T
-    // t * s -> m * T * S
-    // s * r -> m * T * S * R
-    // gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
-    device.queue.writeBuffer(matrixUniformBuffer, 0, model_matrix);
-    device.queue.writeBuffer(matrixUniformBuffer, (4 * 4) * 4, mat4.inverse(model_matrix));
     
     // texture surface
     const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
 
+    const recWidth =  2.0;
+    const recHeight = 2.0;
+
     vertexData.set([
     //          pos                  uv
      -recWidth/2, -recHeight/2,     0, 0, 
-     recWidth/2,   recHeight/2,     1, 1,
-     recWidth/2,  -recHeight/2,     1, 0,
+      recWidth/2,  recHeight/2,     1, 1,
+      recWidth/2, -recHeight/2,     1, 0,
 
      -recWidth/2, -recHeight/2,     0, 0, 
-     recWidth/2,   recHeight/2,     1, 1,
+      recWidth/2,  recHeight/2,     1, 1,
      -recWidth/2,  recHeight/2,     0, 1,
-    ]) // vertices given in pixel space
+    ]) // vertices given in a model space
 
     const canvasRectangleVertexBuffer = device.createBuffer({
     label: 'rectangle vertices',
@@ -98,13 +86,13 @@ async function main()
     let offset = 0;
 
     // left_eye: vec4f 
-    sceneView.setFloat32(offset, -0.065 * 2.5, true); offset += 4; 
+    sceneView.setFloat32(offset, -0.065 * 2.005, true); offset += 4; 
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
     sceneView.setFloat32(offset, 3.0, true); offset += 4;    
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
 
     // right_eye: vec4f
-    sceneView.setFloat32(offset, 0.065 * 2.5, true); offset += 4;  
+    sceneView.setFloat32(offset, 0.065 * 2.005, true); offset += 4;  
     sceneView.setFloat32(offset, 0.0, true); offset += 4;   
     sceneView.setFloat32(offset, 3.0, true); offset += 4;    
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
@@ -117,11 +105,11 @@ async function main()
     for (let i = 0; i < numSpheres; i++) {
         // centre: vec3f            0->1 : -0.5->0.5 : -1.0->1.0 
 
-        let x = 1//(Math.random() - 0.5) * 2;
-        let y = 1//(Math.random() - 0.5) * 2;
+        let x = 0//(Math.random() - 0.5) * 2;
+        let y = 0//(Math.random() - 0.5) * 2;
         let z = -2//-2.0 - Math.random() * 2;
 
-        let r =  0.3;// + Math.random() * 0.1;
+        let r =  0.4;// + Math.random() * 0.1;
 
         console.log(x,y,z,r);
 
@@ -207,7 +195,7 @@ async function main()
         label: 'compute',
         layout: computePipeline.getBindGroupLayout(0),
         entries: [
-            { binding: 0, resource: { buffer: rectangleUniformBuffer }},
+            { binding: 0, resource: { buffer: matrixUniformBuffer }},
             { binding: 1, resource: { buffer: sceneBuffer }},
             { binding: 2, resource: { buffer: splatStorageBuffer }},
         ]
