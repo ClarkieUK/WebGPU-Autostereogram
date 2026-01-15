@@ -109,7 +109,7 @@ fn trace_scene(ray: Ray) -> f32 {
         }
     }
     
-    // Check background plane if you have one
+    // Check background plane 
     let plane_t = intersect_plane(ray, background_plane);
     if (plane_t > 0.0 && plane_t < min_t) { min_t = plane_t; hit = true; }
     
