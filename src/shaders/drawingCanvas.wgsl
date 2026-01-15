@@ -1,7 +1,5 @@
 struct Uniforms {
     resolution: vec2f,
-    translation: vec2f,
-    dim: vec2f,
 };
 
 struct MatrixUniforms {
@@ -20,7 +18,7 @@ struct SplatBuffer {
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<storage, read_write> splats: SplatBuffer;
+@group(0) @binding(1) var<storage, read_write> splats: SplatBuffer; // from compute shader
 @group(0) @binding(2) var<uniform> matrixUniforms: MatrixUniforms;
 
 struct Vertex {
