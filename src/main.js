@@ -19,12 +19,12 @@ async function main()
 
     // w / h = tw / th
 
-    const recWidth =  900.0;
+    const recWidth =  1200.0;
     const recHeight = 900.0;
 
     // uniforms
     const rectangleUniformBuffer = device.createBuffer({
-        label: 'vertices',
+        label: 'uniforms',
         size: 6 * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
@@ -34,9 +34,10 @@ async function main()
     const translationValue = rectangleUniformBufferValues.subarray(2, 4);
     const dimValue = rectangleUniformBufferValues.subarray(4, 6);
 
+    // Set dim to world-space size of rectangle
+    dimValue.set([1.0, 1.0]);
+
     device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues); 
-    // contains the origin-xy + width-height in world space
-    // i.e +500 and dimValue[0] wide
 
     // texture surface
     const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
@@ -59,6 +60,68 @@ async function main()
     });
 
     device.queue.writeBuffer(canvasRectangleVertexBuffer, 0, vertexData);
+
+    // Scene buffer (eyes + spheres)
+    const numSpheres = 2;
+    const sceneSize = 
+        16 +        // left_eye: vec4f
+        16 +        // right_eye: vec4f  
+        4 + 12 +    // sphere_count: u32 + padding
+        (16 * numSpheres); // spheres array (16 bytes each: vec3f + f32)
+
+    const sceneData = new ArrayBuffer(sceneSize);
+    const sceneView = new DataView(sceneData);
+
+    let offset = 0;
+
+    // left_eye: vec4f (behind rectangle, looking forward)
+    sceneView.setFloat32(offset, -0.065 * 2.5, true); offset += 4; // x (eye separation)
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    // y
+    sceneView.setFloat32(offset, 3.0, true); offset += 4;    // z (behind rectangle)
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    // w (unused)
+
+    // right_eye: vec4f
+    sceneView.setFloat32(offset, 0.065 * 2.5, true); offset += 4;  // x
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    // y
+    sceneView.setFloat32(offset, 3.0, true); offset += 4;    // z
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    // w (unused)
+
+    // sphere_count: u32
+    sceneView.setUint32(offset, numSpheres, true); offset += 4;
+    offset += 12; // padding to align array
+
+    // spheres: array<Sphere> (in front of rectangle)
+    for (let i = 0; i < numSpheres; i++) {
+        // centre: vec3f
+        sceneView.setFloat32(offset, (Math.random() - 0.5) * 2, true); offset += 4; // x
+        sceneView.setFloat32(offset, (Math.random() - 0.5) * 2, true); offset += 4; // y
+        sceneView.setFloat32(offset, -2.0 - Math.random() * 2, true); offset += 4;  // z (between -2 and -4)
+        
+        // radius: f32
+        sceneView.setFloat32(offset, 0.3 + Math.random() * 0.3, true); offset += 4; // radius 0.3-0.6
+    }
+
+    const sceneBuffer = device.createBuffer({
+        label: 'scene storage',
+        size: sceneSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    device.queue.writeBuffer(sceneBuffer, 0, sceneData);
+
+    // Splat buffer
+    const maxSplats = 50000;
+    const splatBufferSize = 4 + 12 + (maxSplats * 16); // atomic count + padding + points
+
+    const splatStorageBuffer = device.createBuffer({
+        label: 'splat storage',
+        size: splatBufferSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    // Initialize count to 0
+    const zeroData = new Uint32Array(1);
+    device.queue.writeBuffer(splatStorageBuffer, 0, zeroData);
 
     // shaders
     const module = device.createShaderModule({
@@ -90,14 +153,9 @@ async function main()
     label: 'rectangle bind group',
     layout: pipeline.getBindGroupLayout(0),
     entries: [
-        { binding: 0, resource: { buffer: rectangleUniformBuffer }}
+        { binding: 0, resource: { buffer: rectangleUniformBuffer }},
+        { binding: 1, resource: { buffer: splatStorageBuffer }}
     ],
-    });
-
-    const staticStorageBuffer = device.createBuffer({
-    label: 'static storage for objects',
-    size: 64,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
     const computeModule = device.createShaderModule({
@@ -116,8 +174,9 @@ async function main()
         label: 'compute',
         layout: computePipeline.getBindGroupLayout(0),
         entries: [
-            { binding: 0, resource: {buffer: rectangleUniformBuffer }},
-            { binding: 1, resource: {buffer: staticStorageBuffer }},
+            { binding: 0, resource: { buffer: rectangleUniformBuffer }},
+            { binding: 1, resource: { buffer: sceneBuffer }},
+            { binding: 2, resource: { buffer: splatStorageBuffer }},
         ]
     })
 
@@ -141,35 +200,29 @@ async function main()
         renderPassDescriptor.colorAttachments[0].view =
             context.getCurrentTexture().createView();
 
-        const encoder = device.createCommandEncoder({});
-
         // send uniforms 
-        resolutionValue.set([canvas.width,canvas.height]);
+        resolutionValue.set([canvas.width, canvas.height]);
         translationValue.set(settings.translation);
         device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues);
 
+        const encoder = device.createCommandEncoder({});
+
+        // Clear splat count
+        encoder.clearBuffer(splatStorageBuffer, 0, 4);
+
         // generating texture
         const computePass = encoder.beginComputePass();
-
         computePass.setPipeline(computePipeline);
-
         computePass.setBindGroup(0, computebindGroup);
-        
-        computePass.dispatchWorkgroups(1);
-
+        computePass.dispatchWorkgroups(Math.ceil(500 / 64));
         computePass.end();
 
         // display texture in world
         const pass = encoder.beginRenderPass(renderPassDescriptor);
-
         pass.setPipeline(pipeline);
-
         pass.setBindGroup(0, renderBindGroup);
-
         pass.setVertexBuffer(0, canvasRectangleVertexBuffer);
-
-        pass.draw(6,1);
-
+        pass.draw(6, 1);
         pass.end();
 
         const commandBuffer = encoder.finish();
@@ -177,15 +230,16 @@ async function main()
     };
 
     gui.onChange(render);
-    gui.add(settings.translation, '0', 0, 1920).name('translation.x');
-    gui.add(settings.translation, '1', 0, 1080).name('translation.y');
-
+    gui.add(settings.translation, '0', -1,1).name('translation.x');
+    gui.add(settings.translation, '1', -1, 1).name('translation.y');
+    
     const observer = new ResizeObserver(
         generateObserverCallback({ canvas: canvas, device: device, render})
     );
     observer.observe(canvas);
 
     console.log('Working...')
+    
 }
 
 main()
