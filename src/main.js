@@ -19,32 +19,38 @@ async function main()
 
     // w / h = tw / th
 
+    const recWidth =  900.0;
+    const recHeight = 900.0;
+
     // uniforms
     const rectangleUniformBuffer = device.createBuffer({
         label: 'vertices',
-        size: 4 * 4,
+        size: 6 * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    const rectangleUniformBufferValues = new Float32Array(4);
+    const rectangleUniformBufferValues = new Float32Array(6);
     const resolutionValue = rectangleUniformBufferValues.subarray(0, 2);
     const translationValue = rectangleUniformBufferValues.subarray(2, 4);
+    const dimValue = rectangleUniformBufferValues.subarray(4, 6);
 
-    device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues);
+    device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues); 
+    // contains the origin-xy + width-height in world space
+    // i.e +500 and dimValue[0] wide
 
     // texture surface
     const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
 
     vertexData.set([
-    //    pos       uv
-     0,   0,       0, 0, 
-     800, 0,       1, 0,
-     800, 800,     1, 1,
+    //    pos                uv
+     0,        0,           0, 0, 
+     recWidth, 0,           1, 0,
+     recWidth, recHeight,   1, 1,
 
-     0,   0,       0, 0,
-     0,   800,     0, 1,
-     800, 800,     1, 1,
-    ]) // vertices given in pixel space, weird shape for transformation intuiton
+     0,        0,           0, 0,
+     0,        recHeight,   0, 1,
+     recWidth, recHeight,   1, 1,
+    ]) // vertices given in pixel space
 
     const canvasRectangleVertexBuffer = device.createBuffer({
     label: 'rectangle vertices',
@@ -107,9 +113,11 @@ async function main()
     });
 
     const computebindGroup = device.createBindGroup({
+        label: 'compute',
         layout: computePipeline.getBindGroupLayout(0),
         entries: [
-            { binding: 0, resource: staticStorageBuffer },
+            { binding: 0, resource: {buffer: rectangleUniformBuffer }},
+            { binding: 1, resource: {buffer: staticStorageBuffer }},
         ]
     })
 
