@@ -10,6 +10,11 @@ import { rand } from './utils/randomNumber';
 
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
 
+import {
+  vec3,
+  mat4,
+} from 'https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js';
+
 async function main()
 {
 
@@ -19,8 +24,8 @@ async function main()
 
     // w / h = tw / th
 
-    const recWidth =  1200.0;
-    const recHeight = 900.0;
+    const recWidth =  1.0;
+    const recHeight = 1.0;
 
     // uniforms
     const rectangleUniformBuffer = device.createBuffer({
@@ -39,18 +44,35 @@ async function main()
 
     device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues); 
 
+    const matrixUniformBuffer = device.createBuffer({
+        label: 'matrix uniforms',
+        size: 16 * 4,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
+    const m = mat4.identity();
+    const t = mat4.translate(m, [0.0, 0, 0]);    // operate t first so its applied last
+    const s = mat4.scale(t, [1, 1, 1]);  
+    const r = mat4.rotateZ(s, Math.PI * 45.0/180);    // act on t with r, its applied first in the context of the vertex multiplication 
+    const model_matrix = r;
+    // m * T
+    // t * s -> m * T * S
+    // s * r -> m * T * S * R
+    // gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
+    device.queue.writeBuffer(matrixUniformBuffer, 0, model_matrix);
+
     // texture surface
     const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
 
     vertexData.set([
-    //    pos                uv
-     0,        0,           0, 0, 
-     recWidth, 0,           1, 0,
-     recWidth, recHeight,   1, 1,
+    //          pos                  uv
+     -recWidth/2, -recHeight/2,     0, 0, 
+     recWidth/2,   recHeight/2,     1, 1,
+     recWidth/2,  -recHeight/2,     1, 0,
 
-     0,        0,           0, 0,
-     0,        recHeight,   0, 1,
-     recWidth, recHeight,   1, 1,
+     -recWidth/2, -recHeight/2,     0, 0, 
+     recWidth/2,   recHeight/2,     1, 1,
+     -recWidth/2,  recHeight/2,     0, 1,
     ]) // vertices given in pixel space
 
     const canvasRectangleVertexBuffer = device.createBuffer({
@@ -62,7 +84,7 @@ async function main()
     device.queue.writeBuffer(canvasRectangleVertexBuffer, 0, vertexData);
 
     // Scene buffer (eyes + spheres)
-    const numSpheres = 2;
+    const numSpheres = 1;
     const sceneSize = 
         16 +        // left_eye: vec4f
         16 +        // right_eye: vec4f  
@@ -74,31 +96,40 @@ async function main()
 
     let offset = 0;
 
-    // left_eye: vec4f (behind rectangle, looking forward)
-    sceneView.setFloat32(offset, -0.065 * 2.5, true); offset += 4; // x (eye separation)
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    // y
-    sceneView.setFloat32(offset, 3.0, true); offset += 4;    // z (behind rectangle)
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    // w (unused)
+    // left_eye: vec4f 
+    sceneView.setFloat32(offset, -0.065 * 2.5, true); offset += 4; 
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
+    sceneView.setFloat32(offset, 3.0, true); offset += 4;    
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
 
     // right_eye: vec4f
-    sceneView.setFloat32(offset, 0.065 * 2.5, true); offset += 4;  // x
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    // y
-    sceneView.setFloat32(offset, 3.0, true); offset += 4;    // z
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    // w (unused)
+    sceneView.setFloat32(offset, 0.065 * 2.5, true); offset += 4;  
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;   
+    sceneView.setFloat32(offset, 3.0, true); offset += 4;    
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
 
     // sphere_count: u32
     sceneView.setUint32(offset, numSpheres, true); offset += 4;
     offset += 12; // padding to align array
 
-    // spheres: array<Sphere> (in front of rectangle)
+    // spheres: array<Sphere> 
     for (let i = 0; i < numSpheres; i++) {
-        // centre: vec3f
-        sceneView.setFloat32(offset, (Math.random() - 0.5) * 2, true); offset += 4; // x
-        sceneView.setFloat32(offset, (Math.random() - 0.5) * 2, true); offset += 4; // y
-        sceneView.setFloat32(offset, -2.0 - Math.random() * 2, true); offset += 4;  // z (between -2 and -4)
+        // centre: vec3f            0->1 : -0.5->0.5 : -1.0->1.0 
+
+        let x = 1//(Math.random() - 0.5) * 2;
+        let y = 1//(Math.random() - 0.5) * 2;
+        let z = -2.0 - Math.random() * 2;
+
+        let r =  0.3;// + Math.random() * 0.1;
+
+        console.log(x,y,z,r);
+
+        sceneView.setFloat32(offset, x, true); offset += 4; // x
+        sceneView.setFloat32(offset, y, true); offset += 4; // y
+        sceneView.setFloat32(offset, z, true); offset += 4;  // z 
         
         // radius: f32
-        sceneView.setFloat32(offset, 0.3 + Math.random() * 0.3, true); offset += 4; // radius 0.3-0.6
+        sceneView.setFloat32(offset, r, true); offset += 4; // radius 
     }
 
     const sceneBuffer = device.createBuffer({
@@ -154,7 +185,8 @@ async function main()
     layout: pipeline.getBindGroupLayout(0),
     entries: [
         { binding: 0, resource: { buffer: rectangleUniformBuffer }},
-        { binding: 1, resource: { buffer: splatStorageBuffer }}
+        { binding: 1, resource: { buffer: splatStorageBuffer }},
+        { binding: 2, resource: { buffer: matrixUniformBuffer }},
     ],
     });
 
@@ -193,6 +225,8 @@ async function main()
 
     const settings = {
     translation: [0, 0],
+    scale: 1,
+    rotation: 0,
     };
 
     function render() {
@@ -204,6 +238,17 @@ async function main()
         resolutionValue.set([canvas.width, canvas.height]);
         translationValue.set(settings.translation);
         device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues);
+
+        const t = mat4.translate(m, [settings.translation[0], settings.translation[1], 0]);    // operate t first so its applied last
+        const s = mat4.scale(t, [settings.scale, settings.scale, 1]);  
+        const r = mat4.rotateZ(s, Math.PI * settings.rotation/180);    // act on t with r, its applied first in the context of the vertex multiplication 
+        const model_matrix = r;
+        // m * T
+        // t * s -> m * T * S
+        // s * r -> m * T * S * R
+        // gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
+        device.queue.writeBuffer(matrixUniformBuffer, 0, model_matrix);
+
 
         const encoder = device.createCommandEncoder({});
 
@@ -232,6 +277,8 @@ async function main()
     gui.onChange(render);
     gui.add(settings.translation, '0', -1,1).name('translation.x');
     gui.add(settings.translation, '1', -1, 1).name('translation.y');
+    gui.add(settings, 'scale', 0, 2).name('scale');
+    gui.add(settings, 'rotation', 0, 360).name('rotation');
     
     const observer = new ResizeObserver(
         generateObserverCallback({ canvas: canvas, device: device, render})
