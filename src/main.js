@@ -46,7 +46,7 @@ async function main()
 
     const matrixUniformBuffer = device.createBuffer({
         label: 'matrix uniforms',
-        size: 16 * 4,
+        size: 2 * 16 * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -60,7 +60,8 @@ async function main()
     // s * r -> m * T * S * R
     // gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
     device.queue.writeBuffer(matrixUniformBuffer, 0, model_matrix);
-
+    device.queue.writeBuffer(matrixUniformBuffer, (4 * 4) * 4, mat4.inverse(model_matrix));
+    
     // texture surface
     const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
 
@@ -118,7 +119,7 @@ async function main()
 
         let x = 1//(Math.random() - 0.5) * 2;
         let y = 1//(Math.random() - 0.5) * 2;
-        let z = -2.0 - Math.random() * 2;
+        let z = -2//-2.0 - Math.random() * 2;
 
         let r =  0.3;// + Math.random() * 0.1;
 
@@ -126,7 +127,7 @@ async function main()
 
         sceneView.setFloat32(offset, x, true); offset += 4; // x
         sceneView.setFloat32(offset, y, true); offset += 4; // y
-        sceneView.setFloat32(offset, z, true); offset += 4;  // z 
+        sceneView.setFloat32(offset, z, true); offset += 4; // z 
         
         // radius: f32
         sceneView.setFloat32(offset, r, true); offset += 4; // radius 
@@ -248,6 +249,7 @@ async function main()
         // s * r -> m * T * S * R
         // gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
         device.queue.writeBuffer(matrixUniformBuffer, 0, model_matrix);
+        device.queue.writeBuffer(matrixUniformBuffer, 64, mat4.inverse(model_matrix));
 
 
         const encoder = device.createCommandEncoder({});

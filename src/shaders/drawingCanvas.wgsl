@@ -4,8 +4,9 @@ struct Uniforms {
     dim: vec2f,
 };
 
-struct UniformTest {
-    translation: mat4x4<f32>,
+struct MatrixUniforms {
+    model: mat4x4<f32>,
+    inverse_model: mat4x4<f32>,
 };
 
 struct SplatPoint {
@@ -20,7 +21,7 @@ struct SplatBuffer {
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> splats: SplatBuffer;
-@group(0) @binding(2) var<uniform> uniformsTest: UniformTest;
+@group(0) @binding(2) var<uniform> matrixUniforms: MatrixUniforms;
 
 struct Vertex {
     @location(0) position: vec2f,
@@ -35,9 +36,9 @@ struct ourVsOutput {
 @vertex fn vs(vert: Vertex) -> ourVsOutput {
 
     // gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
-    // reminding myself of cpp / opengl implementation
+    // reminding myself of c++ / opengl implementation
 
-    let worldPosition = uniformsTest.translation * vec4f(vert.position, 0.0, 1.0);
+    let worldPosition = matrixUniforms.model * vec4f(vert.position, 0.0, 1.0);
     
     let clipX = worldPosition.x / (uniforms.resolution.x / uniforms.resolution.y);
     let clipY = worldPosition.y;
