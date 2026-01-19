@@ -1,3 +1,13 @@
+struct Uniforms {
+    resolution: vec2f,
+    dimensions: vec2f,
+};
+
+struct MatrixUniforms {
+    model: mat4x4<f32>,
+    inverse_model: mat4x4<f32>,
+};
+
 struct Sphere {
     centre: vec3f,
     radius: f32,  
@@ -8,7 +18,7 @@ struct Plane {
     origin: vec3f, 
 } 
 
-const background_plane = Plane(vec3f(0.0,0.0,-1.0),vec3f(0.0,0.0,-3.0));
+const background_plane = Plane(vec3f(0.0,0.0,-1.0),vec3f(0.0,0.0,-1.0));
 // could pass this as a scene parameter?
 
 struct Ray {
@@ -23,11 +33,6 @@ struct Scene {
     spheres: array<Sphere>,
 }
 
-struct MatrixUniforms {
-    model: mat4x4<f32>,
-    inverse_model: mat4x4<f32>,
-};
-
 struct SplatPoint {
     uv: vec2f,
     seed_id: u32,
@@ -36,10 +41,6 @@ struct SplatPoint {
 struct SplatBuffer {
     count: atomic<u32>,
     points: array<SplatPoint>,
-}
-
-fn hash1(p: f32) -> f32 {
-    return fract(sin(p) * 43758.5453123);
 }
 
 fn write_splat(uv: vec2f, seed_id: u32) {
@@ -51,38 +52,44 @@ fn write_splat(uv: vec2f, seed_id: u32) {
 }
 
 fn uv_to_world(uv: vec2f) -> vec3f {
-    // 0.0->1.0 : -0.5->0.5
-    let vertex_pos = vec2f(uv.x - 0.5, uv.y - 0.5);
-    
-    // model matrix to get world position
+    // 0.0->1.0 : -dim/2 -> dim/2
+    let vertex_pos = vec2f(
+        uv.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
+        uv.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+    );
     let world_pos = matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0);
-    
     return world_pos.xyz;
 }
 
 fn world_to_uv(world_pos: vec3f) -> vec2f {
-
-    let vertex_pos = matrixUniforms.inverse_model * vec4f(world_pos.xy, 0.0, 1.0);
-    
-    // -0.5->0.5 : 0->1
-    let uv = vec2f(vertex_pos.x + 0.5, vertex_pos.y + 0.5);
-    
+    let vertex_pos = matrixUniforms.inverse_model * vec4f(world_pos, 1.0);
+    // -dim/2 -> dim/2 : 0.0->1.0
+    let uv = vec2f(
+        (vertex_pos.x + uniforms.dimensions.x / 2.0) / uniforms.dimensions.x,
+        (vertex_pos.y + uniforms.dimensions.y / 2.0) / uniforms.dimensions.y
+    );
     return uv;
 }
 
 fn get_rect_intersect(world_pos: vec3f, eye_pos: vec3f) -> vec2f {
-
     let dir = normalize(world_pos - eye_pos);
     
-    // intersect with z=0 plane 
-    let t = (0.0 - eye_pos.z) / dir.z;
+    let local_normal = vec4f(0.0, 0.0, 1.0, 0.0);
+    let world_normal = normalize((matrixUniforms.model * local_normal).xyz);
+    
+    // rectangle's center in world space
+    let rect_origin = (matrixUniforms.model * vec4f(0.0, 0.0, 0.0, 1.0)).xyz;
+    
+    // plane intersection
+    let denom = dot(world_normal, dir);
+    if (abs(denom) < 0.0001) { return vec2f(-999.0); }  // parallel to plane
+    
+    let t = dot(rect_origin - eye_pos, world_normal) / denom;
     if (t < 0.0) { return vec2f(-999.0); }  // behind eye
     
     let intersection = eye_pos + dir * t;
     
-    // convert world intersection back to UV 
     let uv = world_to_uv(intersection);
-
     return uv;
 }
 
@@ -165,12 +172,12 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, eye_pos: vec3f, direction: f32
     }
 }
 
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<uniform> matrixUniforms: MatrixUniforms;
+@group(0) @binding(2) var<storage, read> scene: Scene;
+@group(0) @binding(3) var<storage, read_write> splats: SplatBuffer;
 
-@group(0) @binding(0) var<uniform> matrixUniforms: MatrixUniforms;
-@group(0) @binding(1) var<storage, read> scene: Scene;
-@group(0) @binding(2) var<storage, read_write> splats: SplatBuffer;
-
-const NUM_SEEDS: u32 = 500u;
+const NUM_SEEDS: u32 = 550u;
 
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {
@@ -178,8 +185,8 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     if (seed_id >= NUM_SEEDS) { return; }
 
     let seed_uv = vec2f(
-        hash1(f32(seed_id)),
-        hash1(f32(seed_id) + 100.0)
+        hash1(f32(seed_id+0)),
+        hash1(f32(seed_id+0) + 100.0)
     );
     
     // left eye
@@ -210,4 +217,8 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     // chain in accoss the epipolar
     chain_direction(right_uv, seed_id, scene.right_eye.xyz, 1.0);  
     chain_direction(seed_uv, seed_id, scene.left_eye.xyz, -1.0);  // seed is origin left intersect
+}
+
+fn hash1(p: f32) -> f32 {
+    return fract(sin(p) * 43758.5453123);
 }
