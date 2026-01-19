@@ -22,20 +22,29 @@ async function main()
 
     const gui = new GUI();
 
+    const MONITOR_WIDTH = 0.60 // m
+    const MONITOR_HEIGHT = 0.35 
+    const IPD = 0.065
+    const VIEWING_DISTANCE = 0.55 // m
+
+    const recWidth =  2; // clip space
+    const recHeight = 2;
+
     // w / h = tw / th
 
     // uniforms
     const rectangleUniformBuffer = device.createBuffer({
         label: 'uniforms',
-        size: 6 * 4,
+        size: 4 * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    const rectangleUniformBufferValues = new Float32Array(6);
+    const rectangleUniformBufferValues = new Float32Array(4);
     const resolutionValue = rectangleUniformBufferValues.subarray(0, 2);
-    const translationValue = rectangleUniformBufferValues.subarray(2, 4);
-    const dimValue = rectangleUniformBufferValues.subarray(4, 6);
+    const rectangleDimensions = rectangleUniformBufferValues.subarray(2, 4);
 
+    resolutionValue.set([1920,1080]);
+    rectangleDimensions.set([MONITOR_WIDTH, MONITOR_HEIGHT]);
 
     device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues); 
 
@@ -49,9 +58,6 @@ async function main()
     
     // texture surface
     const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
-
-    const recWidth =  2.0;
-    const recHeight = 2.0;
 
     vertexData.set([
     //          pos                  uv
@@ -86,15 +92,15 @@ async function main()
     let offset = 0;
 
     // left_eye: vec4f 
-    sceneView.setFloat32(offset, -0.065 * 2.005, true); offset += 4; 
+    sceneView.setFloat32(offset, -IPD/2, true); offset += 4;  //-0.065 * 1.505
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
-    sceneView.setFloat32(offset, 3.0, true); offset += 4;    
+    sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
 
     // right_eye: vec4f
-    sceneView.setFloat32(offset, 0.065 * 2.005, true); offset += 4;  
+    sceneView.setFloat32(offset, IPD/2, true); offset += 4;  
     sceneView.setFloat32(offset, 0.0, true); offset += 4;   
-    sceneView.setFloat32(offset, 3.0, true); offset += 4;    
+    sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
 
     // sphere_count: u32
@@ -107,9 +113,9 @@ async function main()
 
         let x = 0//(Math.random() - 0.5) * 2;
         let y = 0//(Math.random() - 0.5) * 2;
-        let z = -2//-2.0 - Math.random() * 2;
+        let z = -0.55//-2.0 - Math.random() * 2;
 
-        let r =  0.4;// + Math.random() * 0.1;
+        let r =  0.2;// + Math.random() * 0.1;
 
         console.log(x,y,z,r);
 
@@ -195,9 +201,10 @@ async function main()
         label: 'compute',
         layout: computePipeline.getBindGroupLayout(0),
         entries: [
-            { binding: 0, resource: { buffer: matrixUniformBuffer }},
-            { binding: 1, resource: { buffer: sceneBuffer }},
-            { binding: 2, resource: { buffer: splatStorageBuffer }},
+            { binding: 0, resource: { buffer: rectangleUniformBuffer }},
+            { binding: 1, resource: { buffer: matrixUniformBuffer }},
+            { binding: 2, resource: { buffer: sceneBuffer }},
+            { binding: 3, resource: { buffer: splatStorageBuffer }},
         ]
     })
 
@@ -224,10 +231,6 @@ async function main()
             context.getCurrentTexture().createView();
 
         // send uniforms 
-        resolutionValue.set([canvas.width, canvas.height]);
-        translationValue.set(settings.translation);
-        device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues);
-
         const t = mat4.translate(m, [settings.translation[0], settings.translation[1], 0]);    // operate t first so its applied last
         const s = mat4.scale(t, [settings.scale, settings.scale, 1]);  
         const r = mat4.rotateZ(s, Math.PI * settings.rotation/180);    // act on t with r, its applied first in the context of the vertex multiplication 

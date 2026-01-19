@@ -1,5 +1,6 @@
 struct Uniforms {
     resolution: vec2f,
+    dimensions: vec2f,
 };
 
 struct MatrixUniforms {
@@ -30,7 +31,7 @@ struct ourVsOutput {
     @builtin(position) position: vec4f,
     @location(0) texCoord: vec2f,
 }
-
+/*
 @vertex fn vs(vert: Vertex) -> ourVsOutput {
 
     // gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
@@ -45,29 +46,99 @@ struct ourVsOutput {
     output.position = vec4f(clipX, clipY, 0.0, 1.0);
     output.texCoord = vert.texCoord;
     return output;
+}*/
+
+@vertex fn vs(vert: Vertex) -> ourVsOutput {
+    var output: ourVsOutput;
+    output.position = matrixUniforms.model * vec4f(vert.position.x, vert.position.y, 0.0, 1.0); // No division by aspect
+    output.texCoord = vert.texCoord;
+    return output;
 }
 
+@fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
+    let num_splats = atomicLoad(&splats.count);
+    
+    let vertex_pos = vec2f(
+        fsInput.texCoord.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
+        fsInput.texCoord.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+    );
+    let frag_world_pos = (matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0)).xyz;
+    
+    // Find two closest splats
+    var min_dist1 = 999999.0;
+    var min_dist2 = 999999.0;
+    var closest_seed_id = 0u;
+    
+    for (var i = 0u; i < num_splats; i++) {
+        let splat = splats.points[i];
+        
+        let splat_vertex_pos = vec2f(
+            splat.uv.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
+            splat.uv.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+        );
+        let splat_world_pos = (matrixUniforms.model * vec4f(splat_vertex_pos, 0.0, 1.0)).xyz;
+        
+        let dist = distance(frag_world_pos, splat_world_pos);
+        
+        if (dist < min_dist1) {
+            min_dist2 = min_dist1;
+            min_dist1 = dist;
+            closest_seed_id = splat.seed_id;
+        } else if (dist < min_dist2) {
+            min_dist2 = dist;
+        }
+    }
+    
+    let seed_color = hash3(f32(closest_seed_id));
+    
+    // Edge detection: if two closest distances are similar, we're near an edge
+    let edge_threshold = 0.005;  // adjust for edge thickness
+    let edge_factor = smoothstep(0.0, edge_threshold, min_dist2 - min_dist1);
+    
+    // Darken edges
+    let final_color = seed_color * edge_factor;
+    
+    return vec4f(final_color*3, 1.0);
+}
+
+/* Classic dots 
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     var color = vec4f(0.0);
     
     let num_splats = atomicLoad(&splats.count);
     
+    // convert current fragment's UV to world position
+    let vertex_pos = vec2f(
+        fsInput.texCoord.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
+        fsInput.texCoord.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+    );
+    let frag_world_pos = (matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0)).xyz;
+    
+    // fixed world-space sigma
+    let sigma = 0.002;
+    
     for (var i = 0u; i < num_splats; i++) {
         let splat = splats.points[i];
-        let dist = distance(fsInput.texCoord, splat.uv);
         
-        // splat
-        let sigma = 0.005;
+        // convert splat UV to world position
+        let splat_vertex_pos = vec2f(
+            splat.uv.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
+            splat.uv.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+        );
+        let splat_world_pos = (matrixUniforms.model * vec4f(splat_vertex_pos, 0.0, 1.0)).xyz;
+        
+        // distance in world space
+        let dist = distance(frag_world_pos, splat_world_pos);
+        
         let weight = exp(-(dist * dist) / (2.0 * sigma * sigma));
         
-        // random color per seed_id
         let seed_color = hash3(f32(splat.seed_id));
         
         color += vec4f(seed_color * weight, weight);
     }
-    //return vec4(fsInput.texCoord, 0.0, 1.0);
+    
     return vec4f(color.rgb, 1.0);
-}
+}*/
 
 fn hash1(p: f32) -> f32 {
     return fract(sin(p) * 43758.5453123);
