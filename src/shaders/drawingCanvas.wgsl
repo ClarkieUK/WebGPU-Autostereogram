@@ -54,7 +54,7 @@ struct ourVsOutput {
     output.texCoord = vert.texCoord;
     return output;
 }
-
+/*
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     let num_splats = atomicLoad(&splats.count);
     
@@ -99,9 +99,9 @@ struct ourVsOutput {
     let final_color = seed_color * edge_factor;
     
     return vec4f(final_color*3, 1.0);
-}
+}*/
 
-/* Classic dots 
+/* Classic dots */
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     var color = vec4f(0.0);
     
@@ -115,7 +115,7 @@ struct ourVsOutput {
     let frag_world_pos = (matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0)).xyz;
     
     // fixed world-space sigma
-    let sigma = 0.002;
+    let sigma = 0.0003;
     
     for (var i = 0u; i < num_splats; i++) {
         let splat = splats.points[i];
@@ -138,7 +138,7 @@ struct ourVsOutput {
     }
     
     return vec4f(color.rgb, 1.0);
-}*/
+}
 
 fn hash1(p: f32) -> f32 {
     return fract(sin(p) * 43758.5453123);
