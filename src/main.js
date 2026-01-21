@@ -24,6 +24,7 @@ async function main()
 
     const MONITOR_WIDTH = 0.60 // m
     const MONITOR_HEIGHT = 0.35 
+    const MONITOR_RESOLUTION = [1920,1080]
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 // m
 
@@ -43,7 +44,7 @@ async function main()
     const resolutionValue = rectangleUniformBufferValues.subarray(0, 2);
     const rectangleDimensions = rectangleUniformBufferValues.subarray(2, 4);
 
-    resolutionValue.set([1920,1080]);
+    resolutionValue.set(MONITOR_RESOLUTION);
     rectangleDimensions.set([MONITOR_WIDTH, MONITOR_HEIGHT]);
 
     device.queue.writeBuffer(rectangleUniformBuffer, 0, rectangleUniformBufferValues); 
