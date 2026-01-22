@@ -49,8 +49,14 @@ struct ourVsOutput {
 }*/
 
 @vertex fn vs(vert: Vertex) -> ourVsOutput {
+    let worldPos = matrixUniforms.model * vec4f(vert.position, 0.0, 1.0);
+    
+    // Always project as if monitor is 0.6m * 0.35m
+    let clipX = worldPos.x / (0.6 / 2);  // (0.6 / 2.0)
+    let clipY = worldPos.y / (0.35 / 2); // (0.35 / 2.0)
+    
     var output: ourVsOutput;
-    output.position = matrixUniforms.model * vec4f(vert.position.x, vert.position.y, 0.0, 1.0); // No division by aspect
+    output.position = vec4f(clipX, clipY, 0.0, 1.0);
     output.texCoord = vert.texCoord;
     return output;
 }

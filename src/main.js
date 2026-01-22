@@ -28,8 +28,8 @@ async function main()
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 
 
-    const recWidth =  2; // clip space
-    const recHeight = 2;
+    const recWidth =  MONITOR_WIDTH; 
+    const recHeight = MONITOR_HEIGHT;
 
     // w / h = tw / th
 
@@ -93,7 +93,7 @@ async function main()
     let offset = 0;
 
     // left_eye: vec4f 
-    sceneView.setFloat32(offset, -IPD/2, true); offset += 4;  //-0.065 * 1.505
+    sceneView.setFloat32(offset, -IPD/2, true); offset += 4; 
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
     sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
