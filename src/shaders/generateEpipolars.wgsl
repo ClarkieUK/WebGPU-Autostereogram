@@ -19,7 +19,7 @@ struct Plane {
 } 
 
 const background_plane = Plane(vec3f(0.0,0.0,-1.0),vec3f(0.0,0.0,-1.0));
-// could pass this as a scene parameter?
+// could pass this as a scene parameter I suppose?
 
 struct Ray {
     origin: vec3f, 
@@ -51,23 +51,33 @@ fn write_splat(uv: vec2f, seed_id: u32) {
     splats.points[idx] = SplatPoint(uv, seed_id);
 }
 
+// transformations
+
 fn uv_to_world(uv: vec2f) -> vec3f {
-    // 0.0->1.0 : -dim/2 -> dim/2
+
+    // 0.0->1.0 : 0.0-> dim : -dim/2 -> dim/2
     let vertex_pos = vec2f(
-        uv.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
-        uv.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+        (uv.x * uniforms.dimensions.x) - uniforms.dimensions.x / 2.0,
+        (uv.y * uniforms.dimensions.y) - uniforms.dimensions.y / 2.0
     );
+
+    // -dim/2 -> dim/2 : world space
     let world_pos = matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0);
+
     return world_pos.xyz;
 }
 
 fn world_to_uv(world_pos: vec3f) -> vec2f {
+
+    // world space : -dim/2 -> dim/2
     let vertex_pos = matrixUniforms.inverse_model * vec4f(world_pos, 1.0);
+
     // -dim/2 -> dim/2 : 0.0->1.0
     let uv = vec2f(
         (vertex_pos.x + uniforms.dimensions.x / 2.0) / uniforms.dimensions.x,
         (vertex_pos.y + uniforms.dimensions.y / 2.0) / uniforms.dimensions.y
     );
+
     return uv;
 }
 
@@ -92,6 +102,8 @@ fn get_rect_intersect(world_pos: vec3f, eye_pos: vec3f) -> vec2f {
     let uv = world_to_uv(intersection);
     return uv;
 }
+
+// geometry handling
 
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> f32 {
 
@@ -142,21 +154,19 @@ fn trace_scene(ray: Ray) -> f32 {
     return min_t;
 }
 
-fn chain_direction(start_uv: vec2f, seed_id: u32, eye_pos: vec3f, direction: f32) {
+fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f) {
     var current_uv = start_uv;
     
     for (var iter = 0u; iter < 500u; iter++) {
         let world_pos = uv_to_world(current_uv);
-        let ray = Ray(eye_pos, normalize(world_pos - eye_pos));
+        let ray = Ray(from_eye, normalize(world_pos - from_eye));
         
         let t = trace_scene(ray);
         if (t < 0.0) { break; }
         
         let scene_hit_pos = ray.origin + ray.direction * t;
         
-        // get opposite eye
-        let other_eye = select(scene.right_eye.xyz, scene.left_eye.xyz, direction > 0.0);
-        let verify_ray = Ray(other_eye, normalize(scene_hit_pos - other_eye));
+        let verify_ray = Ray(to_eye, normalize(scene_hit_pos - to_eye));
         let verify_t = trace_scene(verify_ray);
         
         if (verify_t < 0.0) { break; }
@@ -164,8 +174,8 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, eye_pos: vec3f, direction: f32
         let verify_pos = verify_ray.origin + verify_ray.direction * verify_t;
         if (distance(scene_hit_pos, verify_pos) > 0.01) { break; }
         
-        let next_uv = get_rect_intersect(scene_hit_pos, other_eye);
-        if (next_uv.x < 0.0 || next_uv.x > 1.0) { break; }
+        let next_uv = get_rect_intersect(scene_hit_pos, to_eye);
+        if (next_uv.x < 0.0 || next_uv.x > 1.0 || next_uv.y < 0.0 || next_uv.y > 1.0) { break; }
         
         write_splat(next_uv, seed_id);
         current_uv = next_uv;
@@ -215,10 +225,13 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     write_splat(right_uv, seed_id);
     
     // chain in accoss the epipolar
-    chain_direction(right_uv, seed_id, scene.right_eye.xyz, 1.0);  
-    chain_direction(seed_uv, seed_id, scene.left_eye.xyz, -1.0);  // seed is origin left intersect
+    chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz);  
+    chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
 }
 
-fn hash1(p: f32) -> f32 {
-    return fract(sin(p) * 43758.5453123);
+fn hash1(p: f32) -> f32 { // yoinked a better hash function from somewhere 
+    var p_mut = fract(p * 0.1031);
+    p_mut *= p_mut + 33.33;
+    p_mut *= p_mut + p_mut;
+    return fract(p_mut);
 }

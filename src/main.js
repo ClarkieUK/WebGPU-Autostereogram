@@ -26,7 +26,7 @@ async function main()
     const MONITOR_HEIGHT = 0.35 
     const MONITOR_RESOLUTION = [1920,1080]
     const IPD = 0.065
-    const VIEWING_DISTANCE = 0.55 // m
+    const VIEWING_DISTANCE = 0.55 
 
     const recWidth =  2; // clip space
     const recHeight = 2;

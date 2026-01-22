@@ -115,7 +115,7 @@ struct ourVsOutput {
     let frag_world_pos = (matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0)).xyz;
     
     // fixed world-space sigma
-    let sigma = 0.0003;
+    let sigma = 0.0023;
     
     for (var i = 0u; i < num_splats; i++) {
         let splat = splats.points[i];
