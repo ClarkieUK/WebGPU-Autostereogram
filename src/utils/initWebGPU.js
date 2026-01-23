@@ -2,7 +2,9 @@
 async function initWebGPU(){
 
     const adapter = await navigator.gpu?.requestAdapter();  
-    const device = await adapter?.requestDevice();
+    const device = await adapter?.requestDevice({
+      requiredFeatures: ['timestamp-query'],
+    });
 
     if (!device) {
         fail("Browser does not support webGPU");

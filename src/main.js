@@ -6,6 +6,7 @@ import compute_code from './shaders/generateEpipolars.wgsl?raw';
 
 import { initWebGPU } from './utils/initWebGPU';
 import { generateObserverCallback } from './utils/initWebGPU';
+import { GPUProfiler } from './utils/gpuProfiler';
 import { rand } from './utils/randomNumber';
 
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
@@ -19,6 +20,19 @@ async function main()
 {
 
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
+
+    const profiler = new GPUProfiler(device);
+    
+    const perfStats = {
+        frameCount: 0,
+        computeTimeMs: 0,
+        renderTimeMs: 0,
+        totalTimeMs: 0,
+        avgComputeMs: 0,
+        avgRenderMs: 0,
+        avgTotalMs: 0,
+        splatCount: 0,
+    };
 
     const gui = new GUI();
 
@@ -118,7 +132,7 @@ async function main()
 
         let r =  0.2;// + Math.random() * 0.1;
 
-        console.log(x,y,z,r);
+        //console.log(x,y,z,r);
 
         sceneView.setFloat32(offset, x, true); offset += 4; // x
         sceneView.setFloat32(offset, y, true); offset += 4; // y
@@ -143,10 +157,28 @@ async function main()
     const splatStorageBuffer = device.createBuffer({
         label: 'splat storage',
         size: splatBufferSize,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
 
-    // Initialize count to 0
+    const splatReadBuffer = device.createBuffer({
+        label: 'splat read buffer',
+        size: 4,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+
+    const statsBuffer = device.createBuffer({
+    label: 'stats',
+    size: 12, // 3 × u32
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+    });
+
+    const statsReadBuffer = device.createBuffer({
+        label: 'stats read',
+        size: 12,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+
+    // initialize count to 0
     const zeroData = new Uint32Array(1);
     device.queue.writeBuffer(splatStorageBuffer, 0, zeroData);
 
@@ -206,6 +238,7 @@ async function main()
             { binding: 1, resource: { buffer: matrixUniformBuffer }},
             { binding: 2, resource: { buffer: sceneBuffer }},
             { binding: 3, resource: { buffer: splatStorageBuffer }},
+            { binding: 4, resource: { buffer: statsBuffer }},
         ]
     })
 
@@ -224,9 +257,16 @@ async function main()
     translation: [0, 0],
     scale: 1,
     rotation: 0,
+    enableProfiling: true,
+    logInterval: 60,
     };
 
-    function render() {
+    let framesSinceLog = 0;
+    let isRendering = false;
+
+    async function render() {
+        if (isRendering) return;
+        isRendering = true;
 
         renderPassDescriptor.colorAttachments[0].view =
             context.getCurrentTexture().createView();
@@ -248,13 +288,28 @@ async function main()
 
         // Clear splat count
         encoder.clearBuffer(splatStorageBuffer, 0, 4);
+        encoder.clearBuffer(statsBuffer, 0, 12);
+
+        if (settings.enableProfiling) {
+            encoder.writeTimestamp(profiler.querySet, 0);
+        }
 
         // generating texture
         const computePass = encoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, computebindGroup);
-        computePass.dispatchWorkgroups(Math.ceil(500 / 64));
+        computePass.dispatchWorkgroups(Math.ceil(1024 / 64));
         computePass.end();
+
+        if (settings.enableProfiling) {
+            encoder.writeTimestamp(profiler.querySet, 1);
+        }
+
+        encoder.copyBufferToBuffer(statsBuffer, 0, statsReadBuffer, 0, 12);
+
+        if (settings.enableProfiling) {
+            encoder.writeTimestamp(profiler.querySet, 2);
+        }
 
         // display texture in world
         const pass = encoder.beginRenderPass(renderPassDescriptor);
@@ -264,8 +319,76 @@ async function main()
         pass.draw(6, 1);
         pass.end();
 
+        if (settings.enableProfiling) {
+            encoder.writeTimestamp(profiler.querySet, 3);
+        }
+
+        encoder.copyBufferToBuffer(splatStorageBuffer, 0, splatReadBuffer, 0, 4);
+        encoder.copyBufferToBuffer(statsBuffer, 0, statsReadBuffer, 0, 12);
+
+        if (settings.enableProfiling) {
+            encoder.resolveQuerySet(profiler.querySet, 0, 4, profiler.resolveBuffer, 0);
+            encoder.copyBufferToBuffer(
+                profiler.resolveBuffer, 0,
+                profiler.resultBuffer, 0,
+                profiler.resultBuffer.size
+            );
+        }
+
         const commandBuffer = encoder.finish();
         device.queue.submit([commandBuffer]);
+
+        if (settings.enableProfiling) {
+            const timingResults = await profiler.getResults();
+            
+            if (timingResults.length >= 2) {
+                const computeTime = timingResults[0].durationMs; // timestamps 0-1
+                const renderTime = timingResults[1].durationMs;  // timestamps 2-3
+                const totalTime = computeTime + renderTime;
+
+                perfStats.frameCount++;
+                perfStats.computeTimeMs += computeTime;
+                perfStats.renderTimeMs += renderTime;
+                perfStats.totalTimeMs += totalTime;
+
+                perfStats.avgComputeMs = perfStats.computeTimeMs / perfStats.frameCount;
+                perfStats.avgRenderMs = perfStats.renderTimeMs / perfStats.frameCount;
+                perfStats.avgTotalMs = perfStats.totalTimeMs / perfStats.frameCount;
+            }
+
+            // read splat count
+            await splatReadBuffer.mapAsync(GPUMapMode.READ);
+            const splatCountData = new Uint32Array(splatReadBuffer.getMappedRange());
+            perfStats.splatCount = splatCountData[0];
+            splatReadBuffer.unmap();
+
+            // read stats
+            await statsReadBuffer.mapAsync(GPUMapMode.READ);
+            const statsData = new Uint32Array(statsReadBuffer.getMappedRange());
+            const totalRays = statsData[0];
+            const successfulRays = statsData[1];
+            const chainIterations = statsData[2];
+            statsReadBuffer.unmap();
+
+            framesSinceLog++;
+            if (framesSinceLog >= settings.logInterval) {
+                console.log('=== Performance Stats ===');
+                console.log(`Frames: ${perfStats.frameCount}`);
+                console.log(`Splats: ${perfStats.splatCount}`);
+                console.log(`Total rays: ${totalRays}`);
+                console.log(`Successful rays: ${successfulRays}`);
+                console.log(`Chain iterations: ${chainIterations}`);
+                console.log(`Avg Compute: ${perfStats.avgComputeMs.toFixed(3)} ms`);
+                console.log(`Avg Render:  ${perfStats.avgRenderMs.toFixed(3)} ms`);
+                console.log(`Avg Total:   ${perfStats.avgTotalMs.toFixed(3)} ms`);
+                console.log(`FPS:         ${(1000 / perfStats.avgTotalMs).toFixed(1)}`);
+                console.log(`Theoretical rays/s: ${(totalRays / (perfStats.avgComputeMs / 1000)).toExponential(2)}`);
+                framesSinceLog = 0;
+            }
+        }
+
+        isRendering = false;
+        requestAnimationFrame(render);
     };
 
     gui.onChange(render);
@@ -273,13 +396,13 @@ async function main()
     gui.add(settings.translation, '1', -1, 1).name('translation.y');
     gui.add(settings, 'scale', 0, 2).name('scale');
     gui.add(settings, 'rotation', 0, 360).name('rotation');
-    
+    gui.add(settings, 'enableProfiling').name('profiling');
+    gui.add(settings, 'logInterval', 1, 300).name('interval');
+
     const observer = new ResizeObserver(
         generateObserverCallback({ canvas: canvas, device: device, render})
     );
     observer.observe(canvas);
-
-    console.log('Working...')
     
 }
 

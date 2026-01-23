@@ -21,6 +21,12 @@ struct Plane {
 const background_plane = Plane(vec3f(0.0,0.0,-1.0),vec3f(0.0,0.0,-1.0));
 // could pass this as a scene parameter I suppose?
 
+struct Stats {
+    total_rays: atomic<u32>,
+    successful_rays: atomic<u32>,
+    chain_iterations: atomic<u32>,
+}
+
 struct Ray {
     origin: vec3f, 
     direction: vec3f, 
@@ -158,6 +164,9 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f
     var current_uv = start_uv;
     
     for (var iter = 0u; iter < 500u; iter++) {
+        atomicAdd(&stats.chain_iterations, 1u);
+        atomicAdd(&stats.total_rays, 2u); // 2 rays per iteration
+        
         let world_pos = uv_to_world(current_uv);
         let ray = Ray(from_eye, normalize(world_pos - from_eye));
         
@@ -186,8 +195,9 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f
 @group(0) @binding(1) var<uniform> matrixUniforms: MatrixUniforms;
 @group(0) @binding(2) var<storage, read> scene: Scene;
 @group(0) @binding(3) var<storage, read_write> splats: SplatBuffer;
+@group(0) @binding(4) var<storage, read_write> stats: Stats;
 
-const NUM_SEEDS: u32 = 550u;
+const NUM_SEEDS: u32 = 2 * 64u;
 
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {
@@ -199,33 +209,34 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
         hash1(f32(seed_id+0) + 100.0)
     );
     
-    // left eye
     let world_pos = uv_to_world(seed_uv);
     let left_ray = Ray(scene.left_eye.xyz, normalize(world_pos - scene.left_eye.xyz));
     let t = trace_scene(left_ray);
     
-    if (t < 0.0) { return; }  // didn't hit anything
+    atomicAdd(&stats.total_rays, 1u); // count initial ray
+    
+    if (t < 0.0) { return; }
+    
+    atomicAdd(&stats.successful_rays, 1u);
     
     let scene_hit = left_ray.origin + left_ray.direction * t;
     
-    // occlusion
     let right_ray = Ray(scene.right_eye.xyz, normalize(scene_hit - scene.right_eye.xyz));
     let right_t = trace_scene(right_ray);
     
-    if (right_t < 0.0) { return; }  
+    atomicAdd(&stats.total_rays, 1u); // count verification ray
+    
+    if (right_t < 0.0) { return; }
     
     let right_verify = right_ray.origin + right_ray.direction * right_t;
-    if (distance(scene_hit, right_verify) > 0.01) { return; }  // mismatch
+    if (distance(scene_hit, right_verify) > 0.01) { return; }
     
-    // find corresponding point on rectangle from right eye
     let right_uv = get_rect_intersect(scene_hit, scene.right_eye.xyz);
 
-    // splat seeding pair
     write_splat(seed_uv, seed_id);
     write_splat(right_uv, seed_id);
     
-    // chain in accoss the epipolar
-    chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz);  
+    chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz); // from right to left
     chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
 }
 

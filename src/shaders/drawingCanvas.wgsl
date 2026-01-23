@@ -60,7 +60,7 @@ struct ourVsOutput {
     output.texCoord = vert.texCoord;
     return output;
 }
-/*
+/* fun tiliing */ /*
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     let num_splats = atomicLoad(&splats.count);
     
@@ -107,7 +107,7 @@ struct ourVsOutput {
     return vec4f(final_color*3, 1.0);
 }*/
 
-/* Classic dots */
+/* Classic dots */ /*
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     var color = vec4f(0.0);
     
@@ -137,6 +137,54 @@ struct ourVsOutput {
         let dist = distance(frag_world_pos, splat_world_pos);
         
         let weight = exp(-(dist * dist) / (2.0 * sigma * sigma));
+        
+        let seed_color = hash3(f32(splat.seed_id));
+        
+        color += vec4f(seed_color * weight, weight);
+    }
+    
+    return vec4f(color.rgb, 1.0);
+}*/
+
+// culling version ->
+@fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
+    var color = vec4f(0.0);
+    
+    let num_splats = atomicLoad(&splats.count);
+
+    let vertex_pos = vec2f(
+        fsInput.texCoord.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
+        fsInput.texCoord.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+    );
+    let frag_world_pos = (matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0)).xyz;
+    
+    let sigma = 0.0023;
+    let two_sigma_sq = 2.0 * sigma * sigma; 
+    
+    let cutoff_distance = 3.0 * sigma; 
+    let cutoff_distance_sq = cutoff_distance * cutoff_distance;
+    
+    var contributions = 0u; 
+    
+    for (var i = 0u; i < num_splats; i++) {
+        let splat = splats.points[i];
+        
+        let splat_vertex_pos = vec2f(
+            splat.uv.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
+            splat.uv.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+        );
+        let splat_world_pos = (matrixUniforms.model * vec4f(splat_vertex_pos, 0.0, 1.0)).xyz;
+        
+        let diff = frag_world_pos - splat_world_pos;
+        let dist_sq = dot(diff, diff);
+        
+        if (dist_sq > cutoff_distance_sq) { 
+            continue; 
+        }
+        
+        contributions++;
+        
+        let weight = exp(-dist_sq / two_sigma_sq);
         
         let seed_color = hash3(f32(splat.seed_id));
         
