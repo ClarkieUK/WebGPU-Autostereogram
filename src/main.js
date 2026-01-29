@@ -266,7 +266,7 @@ async function main()
 
     async function render() {
         if (isRendering) return;
-        isRendering = true;
+        isRendering = true; // just incase im doing things inbetween
 
         renderPassDescriptor.colorAttachments[0].view =
             context.getCurrentTexture().createView();
@@ -284,34 +284,28 @@ async function main()
         device.queue.writeBuffer(matrixUniformBuffer, 64, mat4.inverse(model_matrix));
 
 
-        const encoder = device.createCommandEncoder({});
+        const encoder = device.createCommandEncoder({}); // this is kinda where you can think of the gpu loop as starting
 
         // Clear splat count
-        encoder.clearBuffer(splatStorageBuffer, 0, 4);
+        encoder.clearBuffer(splatStorageBuffer, 0, 4); // clear atomics
         encoder.clearBuffer(statsBuffer, 0, 12);
 
-        if (settings.enableProfiling) {
-            encoder.writeTimestamp(profiler.querySet, 0);
-        }
+        if (settings.enableProfiling) { encoder.writeTimestamp(profiler.querySet, 0); }
 
-        // generating texture
+        // generating texture data
         const computePass = encoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, computebindGroup);
         computePass.dispatchWorkgroups(Math.ceil(1024 / 64));
         computePass.end();
 
-        if (settings.enableProfiling) {
-            encoder.writeTimestamp(profiler.querySet, 1);
-        }
+        if (settings.enableProfiling) { encoder.writeTimestamp(profiler.querySet, 1); }
 
         encoder.copyBufferToBuffer(statsBuffer, 0, statsReadBuffer, 0, 12);
 
-        if (settings.enableProfiling) {
-            encoder.writeTimestamp(profiler.querySet, 2);
-        }
+        if (settings.enableProfiling) { encoder.writeTimestamp(profiler.querySet, 2); }
 
-        // display texture in world
+        // display window rectangle in world
         const pass = encoder.beginRenderPass(renderPassDescriptor);
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, renderBindGroup);
@@ -319,9 +313,7 @@ async function main()
         pass.draw(6, 1);
         pass.end();
 
-        if (settings.enableProfiling) {
-            encoder.writeTimestamp(profiler.querySet, 3);
-        }
+        if (settings.enableProfiling) { encoder.writeTimestamp(profiler.querySet, 3); }
 
         encoder.copyBufferToBuffer(splatStorageBuffer, 0, splatReadBuffer, 0, 4);
         encoder.copyBufferToBuffer(statsBuffer, 0, statsReadBuffer, 0, 12);

@@ -107,7 +107,7 @@ struct ourVsOutput {
     return vec4f(final_color*3, 1.0);
 }*/
 
-/* Classic dots */ /*
+/* Classic dots with no culling */ /*
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     var color = vec4f(0.0);
     

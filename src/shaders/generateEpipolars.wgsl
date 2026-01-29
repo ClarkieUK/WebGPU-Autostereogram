@@ -18,7 +18,7 @@ struct Plane {
     origin: vec3f, 
 } 
 
-const background_plane = Plane(vec3f(0.0,0.0,-1.0),vec3f(0.0,0.0,-1.0));
+const background_plane = Plane(vec3f(1.0,-0.0,-1.0),vec3f(0.0,0.0,-1.0));
 // could pass this as a scene parameter I suppose?
 
 struct Stats {
