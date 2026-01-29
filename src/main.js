@@ -8,8 +8,8 @@ import { initWebGPU } from './utils/initWebGPU';
 import { generateObserverCallback } from './utils/initWebGPU';
 import { GPUProfiler } from './utils/gpuProfiler';
 import { rand } from './utils/randomNumber';
-import { camera } from './camera.js';
-import { inputHandler } from './inputHandler.js';
+import { Camera } from './camera.js';
+import { InputHandler } from './inputHandler.js';
 
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
 import {
@@ -46,6 +46,15 @@ async function main()
     const recWidth =  MONITOR_WIDTH; 
     const recHeight = MONITOR_HEIGHT;
 
+    const camera = new Camera(
+        [0, 0, VIEWING_DISTANCE],  // position
+        [0, 1, 0],                  // world up
+        -90.0,                      // yaw
+        0.0                         // pitch
+    );
+
+    const inputHandler = new InputHandler(canvas, camera);
+
     // w / h = tw / th
 
     // uniforms
@@ -66,7 +75,7 @@ async function main()
 
     const matrixUniformBuffer = device.createBuffer({
         label: 'matrix uniforms',
-        size: 2 * 16 * 4,
+        size: 4 * 16 * 4, // model, inverse model, view, proj
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -269,6 +278,8 @@ async function main()
         if (isRendering) return;
         isRendering = true; // just incase im doing things inbetween
 
+        const deltaTime = inputHandler.update();
+
         renderPassDescriptor.colorAttachments[0].view =
             context.getCurrentTexture().createView();
 
@@ -281,9 +292,15 @@ async function main()
         // t * s -> m * T * S
         // s * r -> m * T * S * R
         // gl_Position = projection * view * model * vec4(aPos.x,aPos.y,aPos.z, 1.0);
-        device.queue.writeBuffer(matrixUniformBuffer, 0, model_matrix);
-        device.queue.writeBuffer(matrixUniformBuffer, 64, mat4.inverse(model_matrix));
 
+        const viewMatrix = camera.getViewMatrix();
+        const aspectRatio = canvas.width / canvas.height;
+        const projectionMatrix = camera.getProjectionMatrix(aspectRatio);
+
+        device.queue.writeBuffer(matrixUniformBuffer, 0, model_matrix);
+        device.queue.writeBuffer(matrixUniformBuffer, (1 * 16) * 4, mat4.inverse(model_matrix));
+        device.queue.writeBuffer(matrixUniformBuffer, (2 * 16) * 4, viewMatrix);
+        device.queue.writeBuffer(matrixUniformBuffer, (3 * 16) * 4, projectionMatrix);
 
         const encoder = device.createCommandEncoder({}); // this is kinda where you can think of the gpu loop as starting
 

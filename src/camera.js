@@ -14,7 +14,7 @@ export const CameraMovement = {
     DOWN: 5
 };
 
-export class camera {
+export class Camera {
     constructor(position = [0, 0, 3], worldUp = [0, 1, 0], yaw = -90.0, pitch = 0.0) {
         // camera attributes
         this.position = vec3.create(...position);

@@ -6,6 +6,8 @@ struct Uniforms {
 struct MatrixUniforms {
     model: mat4x4<f32>,
     inverse_model: mat4x4<f32>,
+    view: mat4x4<f32>,
+    projection: mat4x4<f32>,
 };
 
 struct SplatPoint {
@@ -51,12 +53,14 @@ struct ourVsOutput {
 @vertex fn vs(vert: Vertex) -> ourVsOutput {
     let worldPos = matrixUniforms.model * vec4f(vert.position, 0.0, 1.0);
     
+    let foo = matrixUniforms.projection * matrixUniforms.view * matrixUniforms.model * vec4f(vert.position, 0.0, 1.0);
+
     // Always project as if monitor is 0.6m * 0.35m
     let clipX = worldPos.x / (0.6 / 2);  // (0.6 / 2.0)
     let clipY = worldPos.y / (0.35 / 2); // (0.35 / 2.0)
     
     var output: ourVsOutput;
-    output.position = vec4f(clipX, clipY, 0.0, 1.0);
+    output.position = foo; //vec4f(clipX, clipY, 0.0, 1.0);
     output.texCoord = vert.texCoord;
     return output;
 }

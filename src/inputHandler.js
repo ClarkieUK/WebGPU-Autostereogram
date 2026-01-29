@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { CameraMovement } from './camera.js';
 
-export class inputHandler {
+export class InputHandler {
     constructor(canvas, camera) {
         this.canvas = canvas;
         this.camera = camera;
