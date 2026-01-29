@@ -21,6 +21,10 @@ struct Plane {
 const background_plane = Plane(vec3f(1.0,-0.0,-1.0),vec3f(0.0,0.0,-1.0));
 // could pass this as a scene parameter I suppose?
 
+// will also have normal (-1) * camera face, and origin 2 * unit vector away
+
+// maybe invisible eye plane 
+
 struct Stats {
     total_rays: atomic<u32>,
     successful_rays: atomic<u32>,
@@ -95,6 +99,12 @@ fn get_rect_intersect(world_pos: vec3f, eye_pos: vec3f) -> vec2f {
     
     // rectangle's center in world space
     let rect_origin = (matrixUniforms.model * vec4f(0.0, 0.0, 0.0, 1.0)).xyz;
+
+    // need to generalise to moveable rectangle ^^^^ 
+    // thinking that the local normal would just the forward facing camera normal but * (-1)
+    // and think about how the model matrix translates / rotates the window infront of the camera
+    // the rotation will be the difference between some basis vector and where the yaw pitch etc is looking
+    // the translation will have to be some fixed (distance-origin) * the unit camera front vector 
     
     // plane intersection
     let denom = dot(world_normal, dir);

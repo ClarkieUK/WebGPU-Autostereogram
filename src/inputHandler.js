@@ -1,0 +1,109 @@
+// @ts-nocheck
+import { CameraMovement } from './camera.js';
+
+export class inputHandler {
+    constructor(canvas, camera) {
+        this.canvas = canvas;
+        this.camera = camera;
+        
+        // mouse tracking
+        this.firstMouse = true;
+        this.lastX = canvas.width / 2;
+        this.lastY = canvas.height / 2;
+        this.mouseDown = false;
+        
+        // key states
+        this.keys = {};
+        
+        // delta time tracking
+        this.lastFrame = performance.now();
+        this.deltaTime = 0;
+        
+        this.setupEventListeners();
+    }
+    
+    setupEventListeners() {
+        // keyboard events
+        window.addEventListener('keydown', (e) => {
+            this.keys[e.code] = true;
+
+            if (e.code === 'ShiftLeft') {
+                this.camera.setSprinting(true);
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            this.keys[e.code] = false;
+            
+            if (e.code === 'ShiftLeft') {
+                this.camera.setSprinting(false);
+            }
+        });
+        
+        // only track when mouse is clicked
+        this.canvas.addEventListener('mousedown', (e) => {
+            this.mouseDown = true;
+            this.canvas.requestPointerLock();
+        });
+        
+        this.canvas.addEventListener('mouseup', () => {
+            this.mouseDown = false;
+        });
+        
+        // mouse movement with pointer lock
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === this.canvas) {
+                const xOffset = e.movementX;
+                const yOffset = -e.movementY; // reversed since y-coordinates go from bottom to top
+                
+                this.camera.processMouseMovement(xOffset, yOffset);
+            }
+        });
+        
+        // scroll events for zoom
+        this.canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            this.camera.processMouseScroll(e.deltaY * 0.01);
+        });
+        
+        // exit pointer lock on ESC
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement !== this.canvas) {
+                this.mouseDown = false;
+            }
+        });
+    }
+    
+    update() {
+        // calculate delta time
+        const currentFrame = performance.now();
+        this.deltaTime = (currentFrame - this.lastFrame) / 1000; // convert to seconds
+        this.lastFrame = currentFrame;
+        
+        // process keyboard input
+        if (this.keys['KeyW']) {
+            this.camera.processKeyboard(CameraMovement.FORWARD, this.deltaTime);
+        }
+        if (this.keys['KeyS']) {
+            this.camera.processKeyboard(CameraMovement.BACKWARD, this.deltaTime);
+        }
+        if (this.keys['KeyA']) {
+            this.camera.processKeyboard(CameraMovement.LEFT, this.deltaTime);
+        }
+        if (this.keys['KeyD']) {
+            this.camera.processKeyboard(CameraMovement.RIGHT, this.deltaTime);
+        }
+        if (this.keys['Space']) {
+            this.camera.processKeyboard(CameraMovement.UP, this.deltaTime);
+        }
+        if (this.keys['ControlLeft']) {
+            this.camera.processKeyboard(CameraMovement.DOWN, this.deltaTime);
+        }
+        
+        return this.deltaTime;
+    }
+    
+    isKeyPressed(code) {
+        return this.keys[code] || false;
+    }
+}

@@ -8,9 +8,10 @@ import { initWebGPU } from './utils/initWebGPU';
 import { generateObserverCallback } from './utils/initWebGPU';
 import { GPUProfiler } from './utils/gpuProfiler';
 import { rand } from './utils/randomNumber';
+import { camera } from './camera.js';
+import { inputHandler } from './inputHandler.js';
 
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
-
 import {
   vec3,
   mat4,
