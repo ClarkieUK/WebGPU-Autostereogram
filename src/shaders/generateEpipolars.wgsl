@@ -18,7 +18,12 @@ struct Plane {
     origin: vec3f, 
 } 
 
-const background_plane = Plane(vec3f(1.0,-0.0,-1.0),vec3f(0.0,0.0,-1.0));
+struct BackgroundPlane {
+    background_plane_normal: vec4f, 
+    background_plane_origin: vec4f, 
+} 
+
+
 // could pass this as a scene parameter I suppose?
 
 // will also have normal (-1) * camera face, and origin 2 * unit vector away
@@ -119,6 +124,13 @@ fn get_rect_intersect(world_pos: vec3f, eye_pos: vec3f) -> vec2f {
     return uv;
 }
 
+fn get_background_plane() -> Plane {
+    return Plane(
+        backgroundPlane.background_plane_normal.xyz,
+        backgroundPlane.background_plane_origin.xyz
+    );
+}
+
 // geometry handling
 
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> f32 {
@@ -163,6 +175,7 @@ fn trace_scene(ray: Ray) -> f32 {
     }
     
     // check background plane 
+    let background_plane = get_background_plane();
     let plane_t = intersect_plane(ray, background_plane);
     if (plane_t > 0.0 && plane_t < min_t) { min_t = plane_t; hit = true; }
     
@@ -206,8 +219,9 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f
 @group(0) @binding(2) var<storage, read> scene: Scene;
 @group(0) @binding(3) var<storage, read_write> splats: SplatBuffer;
 @group(0) @binding(4) var<storage, read_write> stats: Stats;
+@group(0) @binding(5) var<uniform> backgroundPlane: BackgroundPlane;
 
-const NUM_SEEDS: u32 = 2 * 64u;
+const NUM_SEEDS: u32 = 4 * 64u;
 
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {

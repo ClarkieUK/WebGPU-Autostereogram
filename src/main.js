@@ -42,6 +42,8 @@ async function main()
     const MONITOR_RESOLUTION = [1920,1080]
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 
+    const SCENE_GAP = 2; 
+    const planeDistance = VIEWING_DISTANCE + SCENE_GAP;
 
     const recWidth =  MONITOR_WIDTH; 
     const recHeight = MONITOR_HEIGHT;
@@ -188,6 +190,14 @@ async function main()
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
+    const backgroundPlaneBuffer = device.createBuffer({
+        label: 'background plane buffer',
+        size: (2 * 4) * 4,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    })
+
+    const planeData = new Float32Array(8);
+
     // initialize count to 0
     const zeroData = new Uint32Array(1);
     device.queue.writeBuffer(splatStorageBuffer, 0, zeroData);
@@ -249,6 +259,7 @@ async function main()
             { binding: 2, resource: { buffer: sceneBuffer }},
             { binding: 3, resource: { buffer: splatStorageBuffer }},
             { binding: 4, resource: { buffer: statsBuffer }},
+            { binding: 5, resource: { buffer: backgroundPlaneBuffer }}
         ]
     })
 
@@ -274,6 +285,57 @@ async function main()
     let framesSinceLog = 0;
     let isRendering = false;
 
+    function updateEyePositions(device, sceneBuffer, camera, IPD) {
+        const cameraRight = camera.right; // Already normalized
+        const halfIPD = IPD / 2;
+        
+        // Calculate eye positions
+        const leftEye = vec3.sub(camera.position, vec3.mulScalar(cameraRight, halfIPD));
+        const rightEye = vec3.add(camera.position, vec3.mulScalar(cameraRight, halfIPD));
+        
+        // Only write eye data (32 bytes total: 2 × vec4f)
+        const eyeData = new Float32Array(8); // 2 vec4f = 8 floats
+        
+        // Left eye: vec4f (offset 0-15)
+        eyeData[0] = leftEye[0];
+        eyeData[1] = leftEye[1];
+        eyeData[2] = leftEye[2];
+        eyeData[3] = 0.0; // padding
+        
+        // Right eye: vec4f (offset 16-31)
+        eyeData[4] = rightEye[0];
+        eyeData[5] = rightEye[1];
+        eyeData[6] = rightEye[2];
+        eyeData[7] = 0.0; // padding
+        
+        // Write only the first 32 bytes (eye positions)
+        device.queue.writeBuffer(sceneBuffer, 0, eyeData);
+    }
+
+    function createBillboardMatrix(camera, distance = 0.55) {
+        // Position: camera position + (forward direction × distance)
+        const position = vec3.add(
+            camera.position, 
+            vec3.mulScalar(camera.front, distance)
+        );
+        
+        // Create billboard rotation matrix
+        // The rectangle's normal should align with camera's forward direction
+        const forward = vec3.negate(camera.front); // Point back at camera
+        const right = camera.right;
+        const up = camera.up;
+        
+        // Build model matrix from basis vectors
+        const modelMatrix = mat4.create(
+            right[0],    right[1],    right[2],    0,
+            up[0],       up[1],       up[2],       0,
+            forward[0],  forward[1],  forward[2],  0,
+            position[0], position[1], position[2], 1
+        );
+        
+        return modelMatrix;
+    }
+
     async function render() {
         if (isRendering) return;
         isRendering = true; // just incase im doing things inbetween
@@ -288,6 +350,8 @@ async function main()
         const s = mat4.scale(t, [settings.scale, settings.scale, 1]);  
         const r = mat4.rotateZ(s, Math.PI * settings.rotation/180);    // act on t with r, its applied first in the context of the vertex multiplication 
         const model_matrix = r;
+
+        const test = createBillboardMatrix(camera, VIEWING_DISTANCE);
         // m * T
         // t * s -> m * T * S
         // s * r -> m * T * S * R
@@ -297,10 +361,29 @@ async function main()
         const aspectRatio = canvas.width / canvas.height;
         const projectionMatrix = camera.getProjectionMatrix(aspectRatio);
 
-        device.queue.writeBuffer(matrixUniformBuffer, 0, model_matrix);
-        device.queue.writeBuffer(matrixUniformBuffer, (1 * 16) * 4, mat4.inverse(model_matrix));
+        device.queue.writeBuffer(matrixUniformBuffer, 0, test);
+        device.queue.writeBuffer(matrixUniformBuffer, (1 * 16) * 4, mat4.inverse(test));
         device.queue.writeBuffer(matrixUniformBuffer, (2 * 16) * 4, viewMatrix);
         device.queue.writeBuffer(matrixUniformBuffer, (3 * 16) * 4, projectionMatrix);
+
+        updateEyePositions(device, sceneBuffer, camera, IPD);
+
+        const planeOrigin = vec3.add(
+            camera.position,
+            vec3.mulScalar(camera.front, planeDistance)
+        );
+        const planeNormal = vec3.negate(camera.front);
+        const planeData = new Float32Array(8);
+        planeData[0] = planeNormal[0];
+        planeData[1] = planeNormal[1];
+        planeData[2] = planeNormal[2];
+        planeData[3] = 0.0; // padding
+        planeData[4] = planeOrigin[0];
+        planeData[5] = planeOrigin[1];
+        planeData[6] = planeOrigin[2];
+        planeData[7] = 0.0; // padding
+
+        device.queue.writeBuffer(backgroundPlaneBuffer, 0, planeData);
 
         const encoder = device.createCommandEncoder({}); // this is kinda where you can think of the gpu loop as starting
 
