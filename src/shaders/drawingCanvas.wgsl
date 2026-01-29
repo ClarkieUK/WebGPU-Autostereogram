@@ -64,7 +64,8 @@ struct ourVsOutput {
     output.texCoord = vert.texCoord;
     return output;
 }
-/* fun tiliing */ /*
+/* fun tiliing */ 
+/*
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     let num_splats = atomicLoad(&splats.count);
     
@@ -150,7 +151,8 @@ struct ourVsOutput {
     return vec4f(color.rgb, 1.0);
 }*/
 
-// culling version ->
+// culling version -> 
+
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     var color = vec4f(0.0);
     
@@ -197,6 +199,7 @@ struct ourVsOutput {
     
     return vec4f(color.rgb, 1.0);
 }
+
 
 fn hash1(p: f32) -> f32 {
     return fract(sin(p) * 43758.5453123);

@@ -28,12 +28,12 @@ export class Camera {
         this.right = vec3.create(1, 0, 0);
         
         // camera options
-        this.movementSpeed = 2.5;
+        this.movementSpeed = 1.0;
         this.mouseSensitivity = 0.1;
         this.zoom = 45.0;
         
         // speed modifier
-        this.baseSpeed = 2.5;
+        this.baseSpeed = 1.0;
         this.sprintMultiplier = 4.0;
         
         this.updateCameraVectors();
@@ -115,7 +115,7 @@ export class Camera {
     }
     
     processMouseScroll(yOffset) {
-        this.zoom -= yOffset;
+        this.zoom += yOffset;
         
         if (this.zoom < 1.0) this.zoom = 1.0;
         if (this.zoom > 45.0) this.zoom = 45.0;

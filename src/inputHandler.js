@@ -30,6 +30,10 @@ export class InputHandler {
             if (e.code === 'ShiftLeft') {
                 this.camera.setSprinting(true);
             }
+
+            if (e.code === 'KeyP') {
+                if (this.onKeyP) this.onKeyP();
+            }
         });
         
         window.addEventListener('keyup', (e) => {
@@ -106,4 +110,8 @@ export class InputHandler {
     isKeyPressed(code) {
         return this.keys[code] || false;
     }
+ 
+    setKeyCallback(keyCode, callback) {
+        this[`onKey${keyCode.slice(-1)}`] = callback;
+}
 }

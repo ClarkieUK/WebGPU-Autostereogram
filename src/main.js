@@ -23,6 +23,8 @@ async function main()
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
     const profiler = new GPUProfiler(device);
+
+    const gui = new GUI();
     
     const perfStats = {
         frameCount: 0,
@@ -35,15 +37,14 @@ async function main()
         splatCount: 0,
     };
 
-    const gui = new GUI();
-
     const MONITOR_WIDTH = 0.60 // m
     const MONITOR_HEIGHT = 0.35 
     const MONITOR_RESOLUTION = [1920,1080]
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
-    const planeDistance = VIEWING_DISTANCE + SCENE_GAP;
+    const planeDistance = VIEWING_DISTANCE + SCENE_GAP * 1;
+    let COUPLED_EYES = 1
 
     const recWidth =  MONITOR_WIDTH; 
     const recHeight = MONITOR_HEIGHT;
@@ -56,6 +57,10 @@ async function main()
     );
 
     const inputHandler = new InputHandler(canvas, camera);
+
+    inputHandler.setKeyCallback('KeyP', () => {
+    COUPLED_EYES = !COUPLED_EYES;
+    });
 
     // w / h = tw / th
 
@@ -108,10 +113,10 @@ async function main()
     // Scene buffer (eyes + spheres)
     const numSpheres = 1;
     const sceneSize = 
-        16 +        // left_eye: vec4f
-        16 +        // right_eye: vec4f  
-        4 + 12 +    // sphere_count: u32 + padding
-        (16 * numSpheres); // spheres array (16 bytes each: vec3f + f32)
+        (4 * 4) +           // left_eye: vec4f
+        (4 * 4) +           // right_eye: vec4f  
+        (1 * 4) + (3 * 4) + // sphere_count: u32 + padding
+        ((3+1) * 4 * numSpheres);  // spheres array (16 bytes each: vec3f + f32)
 
     const sceneData = new ArrayBuffer(sceneSize);
     const sceneView = new DataView(sceneData);
@@ -138,9 +143,9 @@ async function main()
     for (let i = 0; i < numSpheres; i++) {
         // centre: vec3f            0->1 : -0.5->0.5 : -1.0->1.0 
 
-        let x = 0//(Math.random() - 0.5) * 2;
-        let y = 0//(Math.random() - 0.5) * 2;
-        let z = -0.55//-2.0 - Math.random() * 2;
+        let x = 0.0;//(Math.random() - 0.5) * 2;
+        let y = 0.0;//(Math.random() - 0.5) * 2;
+        let z = -0.5 //- Math.random() * 2;
 
         let r =  0.2;// + Math.random() * 0.1;
 
@@ -172,35 +177,35 @@ async function main()
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
 
+    // initialize count to 0
+    const zeroData = new Uint32Array(1);
+    device.queue.writeBuffer(splatStorageBuffer, 0, zeroData);
+
     const splatReadBuffer = device.createBuffer({
         label: 'splat read buffer',
-        size: 4,
+        size: 1 * 4,
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
     const statsBuffer = device.createBuffer({
     label: 'stats',
-    size: 12, // 3 × u32
+    size: 3 * 4, // 3 × u32
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
 
     const statsReadBuffer = device.createBuffer({
         label: 'stats read',
-        size: 12,
+        size: 3 * 4,
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
     const backgroundPlaneBuffer = device.createBuffer({
         label: 'background plane buffer',
-        size: (2 * 4) * 4,
+        size: (2 * 4) * 4, // two descriptive vec4fs
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
 
     const planeData = new Float32Array(8);
-
-    // initialize count to 0
-    const zeroData = new Uint32Array(1);
-    device.queue.writeBuffer(splatStorageBuffer, 0, zeroData);
 
     // shaders
     const module = device.createShaderModule({
@@ -313,19 +318,18 @@ async function main()
     }
 
     function createBillboardMatrix(camera, distance = 0.55) {
-        // Position: camera position + (forward direction × distance)
+
         const position = vec3.add(
             camera.position, 
             vec3.mulScalar(camera.front, distance)
         );
         
-        // Create billboard rotation matrix
-        // The rectangle's normal should align with camera's forward direction
-        const forward = vec3.negate(camera.front); // Point back at camera
+        //  rotation matrix
+        const forward = vec3.negate(camera.front); // flip dir too
         const right = camera.right;
         const up = camera.up;
         
-        // Build model matrix from basis vectors
+        // model matrix from basis vectors
         const modelMatrix = mat4.create(
             right[0],    right[1],    right[2],    0,
             up[0],       up[1],       up[2],       0,
@@ -335,6 +339,11 @@ async function main()
         
         return modelMatrix;
     }
+
+    const t = mat4.translate(m, [0, 0, 0]);    // operate t first so its applied last
+    const s = mat4.scale(t, [1, 1, 1]);  
+    const r = mat4.rotateZ(s, 0);    // act on t with r, its applied first in the context of the vertex multiplication 
+    const origin_model_matrix = r;
 
     async function render() {
         if (isRendering) return;
@@ -346,11 +355,6 @@ async function main()
             context.getCurrentTexture().createView();
 
         // send uniforms 
-        const t = mat4.translate(m, [settings.translation[0], settings.translation[1], 0]);    // operate t first so its applied last
-        const s = mat4.scale(t, [settings.scale, settings.scale, 1]);  
-        const r = mat4.rotateZ(s, Math.PI * settings.rotation/180);    // act on t with r, its applied first in the context of the vertex multiplication 
-        const model_matrix = r;
-
         const test = createBillboardMatrix(camera, VIEWING_DISTANCE);
         // m * T
         // t * s -> m * T * S
@@ -361,17 +365,21 @@ async function main()
         const aspectRatio = canvas.width / canvas.height;
         const projectionMatrix = camera.getProjectionMatrix(aspectRatio);
 
-        device.queue.writeBuffer(matrixUniformBuffer, 0, test);
-        device.queue.writeBuffer(matrixUniformBuffer, (1 * 16) * 4, mat4.inverse(test));
         device.queue.writeBuffer(matrixUniformBuffer, (2 * 16) * 4, viewMatrix);
         device.queue.writeBuffer(matrixUniformBuffer, (3 * 16) * 4, projectionMatrix);
 
-        updateEyePositions(device, sceneBuffer, camera, IPD);
+        if (COUPLED_EYES) {
+            updateEyePositions(device, sceneBuffer, camera, IPD);
+            device.queue.writeBuffer(matrixUniformBuffer, 0, test);
+            device.queue.writeBuffer(matrixUniformBuffer, (1 * 16) * 4, mat4.inverse(test));
+        };
 
+        // updates for background plane
         const planeOrigin = vec3.add(
             camera.position,
             vec3.mulScalar(camera.front, planeDistance)
         );
+
         const planeNormal = vec3.negate(camera.front);
         const planeData = new Float32Array(8);
         planeData[0] = planeNormal[0];
@@ -474,7 +482,9 @@ async function main()
                 console.log(`Avg Compute: ${perfStats.avgComputeMs.toFixed(3)} ms`);
                 console.log(`Avg Render:  ${perfStats.avgRenderMs.toFixed(3)} ms`);
                 console.log(`Avg Total:   ${perfStats.avgTotalMs.toFixed(3)} ms`);
-                console.log(`FPS:         ${(1000 / perfStats.avgTotalMs).toFixed(1)}`);
+                console.log(`Avg Total (CPU):         ${(1000 * deltaTime).toFixed(5)} ms`);
+                console.log(`GPU FPS:         ${(1000 / perfStats.avgTotalMs).toFixed(1)}`);
+                console.log(`CPU FPS:         ${(1/deltaTime).toFixed(1)}`);
                 console.log(`Theoretical rays/s: ${(totalRays / (perfStats.avgComputeMs / 1000)).toExponential(2)}`);
                 framesSinceLog = 0;
             }
@@ -485,10 +495,6 @@ async function main()
     };
 
     gui.onChange(render);
-    gui.add(settings.translation, '0', -1,1).name('translation.x');
-    gui.add(settings.translation, '1', -1, 1).name('translation.y');
-    gui.add(settings, 'scale', 0, 2).name('scale');
-    gui.add(settings, 'rotation', 0, 360).name('rotation');
     gui.add(settings, 'enableProfiling').name('profiling');
     gui.add(settings, 'logInterval', 1, 300).name('interval');
 
