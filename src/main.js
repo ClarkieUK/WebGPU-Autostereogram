@@ -355,6 +355,7 @@ async function main()
             context.getCurrentTexture().createView();
 
         // send uniforms 
+
         const test = createBillboardMatrix(camera, VIEWING_DISTANCE);
         // m * T
         // t * s -> m * T * S
@@ -365,9 +366,10 @@ async function main()
         const aspectRatio = canvas.width / canvas.height;
         const projectionMatrix = camera.getProjectionMatrix(aspectRatio);
 
+
         device.queue.writeBuffer(matrixUniformBuffer, (2 * 16) * 4, viewMatrix);
         device.queue.writeBuffer(matrixUniformBuffer, (3 * 16) * 4, projectionMatrix);
-
+        
         if (COUPLED_EYES) {
             updateEyePositions(device, sceneBuffer, camera, IPD);
             device.queue.writeBuffer(matrixUniformBuffer, 0, test);
