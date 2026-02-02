@@ -54,7 +54,6 @@ export class InputHandler {
             this.mouseDown = false;
         });
         
-        // mouse movement with pointer lock
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === this.canvas) {
                 const xOffset = e.movementX;
@@ -64,13 +63,11 @@ export class InputHandler {
             }
         });
         
-        // scroll events for zoom
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             this.camera.processMouseScroll(e.deltaY * 0.01);
         });
         
-        // exit pointer lock on ESC
         document.addEventListener('pointerlockchange', () => {
             if (document.pointerLockElement !== this.canvas) {
                 this.mouseDown = false;
@@ -79,12 +76,10 @@ export class InputHandler {
     }
     
     update() {
-        // calculate delta time
         const currentFrame = performance.now();
         this.deltaTime = (currentFrame - this.lastFrame) / 1000; // convert to seconds
         this.lastFrame = currentFrame;
         
-        // process keyboard input
         if (this.keys['KeyW']) {
             this.camera.processKeyboard(CameraMovement.FORWARD, this.deltaTime);
         }
@@ -100,7 +95,7 @@ export class InputHandler {
         if (this.keys['Space']) {
             this.camera.processKeyboard(CameraMovement.UP, this.deltaTime);
         }
-        if (this.keys['ControlLeft']) {
+        if (this.keys['KeyC']) {
             this.camera.processKeyboard(CameraMovement.DOWN, this.deltaTime);
         }
         

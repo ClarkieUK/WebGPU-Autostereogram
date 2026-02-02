@@ -224,10 +224,15 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     let seed_id = id.x;
     if (seed_id >= NUM_SEEDS) { return; }
 
-    let seed_uv = vec2f(
+    let delta = 1 / f32(NUM_SEEDS);
+
+    var seed_uv = vec2f(
         hash1(f32(seed_id+0)),
         hash1(f32(seed_id+0) + 100.0)
     );
+
+    seed_uv.y = delta * f32(id.x);
+
     
     let world_pos = uv_to_world(seed_uv);
     let left_ray = Ray(scene.left_eye.xyz, normalize(world_pos - scene.left_eye.xyz));

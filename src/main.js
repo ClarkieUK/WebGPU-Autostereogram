@@ -3,13 +3,18 @@
 // imports , shaders, locals, externals
 import code from './shaders/drawingCanvas.wgsl?raw'; // this works fine with vite... (+?raw)
 import compute_code from './shaders/generateEpipolars.wgsl?raw';
+import sphere_code from './shaders/sphereShader.wgsl?raw';
 
 import { initWebGPU } from './utils/initWebGPU';
 import { generateObserverCallback } from './utils/initWebGPU';
 import { GPUProfiler } from './utils/gpuProfiler';
 import { rand } from './utils/randomNumber';
 import { Camera } from './camera.js';
+import { Sphere } from './sphere.js';
+import { SphereRenderer } from './sphereRenderer';
 import { InputHandler } from './inputHandler.js';
+import { Billboard } from './billboardManager';
+import { Profiler } from './utils/codeProfiler';
 
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
 import {
@@ -19,13 +24,6 @@ import {
 
 async function main()
 {
-
-    const {device, canvas, context, format: presentationFormat} = await initWebGPU();
-
-    const profiler = new GPUProfiler(device);
-
-    const gui = new GUI();
-    
     const perfStats = {
         frameCount: 0,
         computeTimeMs: 0,
@@ -48,6 +46,16 @@ async function main()
 
     const recWidth =  MONITOR_WIDTH; 
     const recHeight = MONITOR_HEIGHT;
+        
+    const {device, canvas, context, format: presentationFormat} = await initWebGPU();
+
+    const profiler = new GPUProfiler(device);
+
+    const gui = new GUI();
+
+    const sphereGeometry = new Sphere(20);
+
+    const sphereRenderer = new SphereRenderer(device, presentationFormat, 20);
 
     const camera = new Camera(
         [0, 0, VIEWING_DISTANCE],  // position
@@ -58,12 +66,14 @@ async function main()
 
     const inputHandler = new InputHandler(canvas, camera);
 
+    const billboard = new Billboard(device, presentationFormat, recWidth, recHeight);
+
     inputHandler.setKeyCallback('KeyP', () => {
     COUPLED_EYES = !COUPLED_EYES;
     });
 
     // w / h = tw / th
-
+    
     // uniforms
     const rectangleUniformBuffer = device.createBuffer({
         label: 'uniforms',
@@ -87,31 +97,9 @@ async function main()
     });
 
     const m = mat4.identity();
-    
-    // texture surface
-    const vertexData = new Float32Array(6 * 2 * 2); // 6 vertices, 2 positions and 2 tex coords for each 
-
-    vertexData.set([
-    //          pos                  uv
-     -recWidth/2, -recHeight/2,     0, 0, 
-      recWidth/2,  recHeight/2,     1, 1,
-      recWidth/2, -recHeight/2,     1, 0,
-
-     -recWidth/2, -recHeight/2,     0, 0, 
-      recWidth/2,  recHeight/2,     1, 1,
-     -recWidth/2,  recHeight/2,     0, 1,
-    ]) // vertices given in a model space
-
-    const canvasRectangleVertexBuffer = device.createBuffer({
-    label: 'rectangle vertices',
-    size: vertexData.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-
-    device.queue.writeBuffer(canvasRectangleVertexBuffer, 0, vertexData);
 
     // Scene buffer (eyes + spheres)
-    const numSpheres = 1;
+    const numSpheres = 3;
     const sceneSize = 
         (4 * 4) +           // left_eye: vec4f
         (4 * 4) +           // right_eye: vec4f  
@@ -143,11 +131,11 @@ async function main()
     for (let i = 0; i < numSpheres; i++) {
         // centre: vec3f            0->1 : -0.5->0.5 : -1.0->1.0 
 
-        let x = 0.0;//(Math.random() - 0.5) * 2;
-        let y = 0.0;//(Math.random() - 0.5) * 2;
-        let z = -0.5 //- Math.random() * 2;
+        let x = (Math.random() - 0.5) * 2;
+        let y = (Math.random() - 0.5) * 2;
+        let z = -Math.random() * SCENE_GAP;
 
-        let r =  0.2;// + Math.random() * 0.1;
+        let r =  (Math.random() * 0.25);
 
         //console.log(x,y,z,r);
 
@@ -198,7 +186,7 @@ async function main()
         size: 3 * 4,
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-
+ 
     const backgroundPlaneBuffer = device.createBuffer({
         label: 'background plane buffer',
         size: (2 * 4) * 4, // two descriptive vec4fs
@@ -206,42 +194,6 @@ async function main()
     })
 
     const planeData = new Float32Array(8);
-
-    // shaders
-    const module = device.createShaderModule({
-        label: 'rectangle geometry shader',
-        code: code,
-    });
-
-    const pipeline = device.createRenderPipeline({
-        layout: 'auto',
-        vertex: {
-            module,
-            buffers: [
-                {
-                    arrayStride: 4 * 4, // 2 vertex positions -> 2 tex coord positions
-                    attributes: [
-                        { shaderLocation: 0, offset: 0, format: 'float32x2' },
-                        { shaderLocation: 1, offset: 2 * 4, format: 'float32x2' }
-                    ]
-                },
-            ]
-        },
-        fragment: {
-            module,
-            targets: [{ format: presentationFormat}],
-        },
-    });
-
-    const renderBindGroup = device.createBindGroup({
-    label: 'rectangle bind group',
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-        { binding: 0, resource: { buffer: rectangleUniformBuffer }},
-        { binding: 1, resource: { buffer: splatStorageBuffer }},
-        { binding: 2, resource: { buffer: matrixUniformBuffer }},
-    ],
-    });
 
     const computeModule = device.createShaderModule({
         code: compute_code,
@@ -268,6 +220,22 @@ async function main()
         ]
     })
 
+    sphereRenderer.createBindGroup(matrixUniformBuffer, sceneBuffer);
+    billboard.createBindGroup(rectangleUniformBuffer, splatStorageBuffer, matrixUniformBuffer);
+
+    let depthTexture;
+
+    function updateDepthTexture() {
+        if (depthTexture) depthTexture.destroy();
+        depthTexture = device.createTexture({
+            size: [canvas.width, canvas.height],
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+    }
+
+    updateDepthTexture();
+
     const renderPassDescriptor = {
         colorAttachments: [
             {
@@ -277,6 +245,12 @@ async function main()
                 storeOp: 'store',
             },
         ],
+        depthStencilAttachment: {
+        view: null, 
+        depthClearValue: 1.0,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'store',
+        },
     };
 
     const settings = {
@@ -354,6 +328,9 @@ async function main()
         renderPassDescriptor.colorAttachments[0].view =
             context.getCurrentTexture().createView();
 
+        renderPassDescriptor.depthStencilAttachment.view = 
+            depthTexture.createView();
+
         // send uniforms 
 
         const test = createBillboardMatrix(camera, VIEWING_DISTANCE);
@@ -371,10 +348,12 @@ async function main()
         device.queue.writeBuffer(matrixUniformBuffer, (3 * 16) * 4, projectionMatrix);
         
         if (COUPLED_EYES) {
-            updateEyePositions(device, sceneBuffer, camera, IPD);
+            //updateEyePositions(device, sceneBuffer, camera, IPD);
             device.queue.writeBuffer(matrixUniformBuffer, 0, test);
             device.queue.writeBuffer(matrixUniformBuffer, (1 * 16) * 4, mat4.inverse(test));
         };
+
+        updateEyePositions(device, sceneBuffer, camera, IPD);
 
         // updates for background plane
         const planeOrigin = vec3.add(
@@ -418,10 +397,12 @@ async function main()
 
         // display window rectangle in world
         const pass = encoder.beginRenderPass(renderPassDescriptor);
-        pass.setPipeline(pipeline);
-        pass.setBindGroup(0, renderBindGroup);
-        pass.setVertexBuffer(0, canvasRectangleVertexBuffer);
-        pass.draw(6, 1);
+        
+        billboard.render(pass)
+
+        // sphere stuff
+        sphereRenderer.render(pass, numSpheres);
+
         pass.end();
 
         if (settings.enableProfiling) { encoder.writeTimestamp(profiler.querySet, 3); }
@@ -475,7 +456,7 @@ async function main()
 
             framesSinceLog++;
             if (framesSinceLog >= settings.logInterval) {
-                console.log('=== Performance Stats ===');
+                console.log('Performance Shit -----------------------|');
                 console.log(`Frames: ${perfStats.frameCount}`);
                 console.log(`Splats: ${perfStats.splatCount}`);
                 console.log(`Total rays: ${totalRays}`);
@@ -483,7 +464,7 @@ async function main()
                 console.log(`Chain iterations: ${chainIterations}`);
                 console.log(`Avg Compute: ${perfStats.avgComputeMs.toFixed(3)} ms`);
                 console.log(`Avg Render:  ${perfStats.avgRenderMs.toFixed(3)} ms`);
-                console.log(`Avg Total:   ${perfStats.avgTotalMs.toFixed(3)} ms`);
+                console.log(`Avg Total (GPU):   ${perfStats.avgTotalMs.toFixed(3)} ms`);
                 console.log(`Avg Total (CPU):         ${(1000 * deltaTime).toFixed(5)} ms`);
                 console.log(`GPU FPS:         ${(1000 / perfStats.avgTotalMs).toFixed(1)}`);
                 console.log(`CPU FPS:         ${(1/deltaTime).toFixed(1)}`);
@@ -501,7 +482,12 @@ async function main()
     gui.add(settings, 'logInterval', 1, 300).name('interval');
 
     const observer = new ResizeObserver(
-        generateObserverCallback({ canvas: canvas, device: device, render})
+        generateObserverCallback({ 
+            canvas: canvas, 
+            device: device, 
+            render,
+            onResize: updateDepthTexture  // Add this
+        })
     );
     observer.observe(canvas);
     

@@ -24,24 +24,25 @@ async function initWebGPU(){
 
 }
 
-function generateObserverCallback({ canvas, device, render }) {
+function generateObserverCallback({ canvas, device, render, onResize }) {
 
   return (entries) => {
     for (const entry of entries) {
       const target = entry.target;
 
-
       const box = entry.contentBoxSize?.[0];
       const width = box?.inlineSize ?? entry.contentRect.width;
       const height = box?.blockSize ?? entry.contentRect.height;
 
-      target.width = Math.max(1,Math.min(Math.round(width), device.limits.maxTextureDimension2D));
-      target.height = Math.max(1,Math.min(Math.round(height), device.limits.maxTextureDimension2D));
+      target.width = Math.max(1, Math.min(Math.round(width), device.limits.maxTextureDimension2D));
+      target.height = Math.max(1, Math.min(Math.round(height), device.limits.maxTextureDimension2D));
+    }
+
+    if (onResize) {
+      onResize();
     }
 
     render();
-    
   };
 }
-
 export {initWebGPU, generateObserverCallback}; 
