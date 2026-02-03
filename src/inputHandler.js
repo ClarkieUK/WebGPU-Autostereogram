@@ -6,16 +6,13 @@ export class InputHandler {
         this.canvas = canvas;
         this.camera = camera;
         
-        // mouse tracking
         this.firstMouse = true;
         this.lastX = canvas.width / 2;
         this.lastY = canvas.height / 2;
         this.mouseDown = false;
         
-        // key states
         this.keys = {};
         
-        // delta time tracking
         this.lastFrame = performance.now();
         this.deltaTime = 0;
         
@@ -34,6 +31,11 @@ export class InputHandler {
             if (e.code === 'KeyP') {
                 if (this.onKeyP) this.onKeyP();
             }
+
+            if (e.code === 'KeyO') {
+                if (this.onKeyO) this.onKeyO();
+            }
+
         });
         
         window.addEventListener('keyup', (e) => {

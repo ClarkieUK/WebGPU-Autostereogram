@@ -1,6 +1,7 @@
 struct Uniforms {
     resolution: vec2f,
     dimensions: vec2f,
+    noiseCount: f32,
 };
 
 struct MatrixUniforms {
@@ -158,10 +159,16 @@ struct ourVsOutput {
     
     let num_splats = atomicLoad(&splats.count);
 
+    //let vertex_pos = vec2f(
+    //    fsInput.texCoord.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
+    //    fsInput.texCoord.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
+    //);
+
     let vertex_pos = vec2f(
         fsInput.texCoord.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
         fsInput.texCoord.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
     );
+
     let frag_world_pos = (matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0)).xyz;
     
     let sigma = 0.0023;

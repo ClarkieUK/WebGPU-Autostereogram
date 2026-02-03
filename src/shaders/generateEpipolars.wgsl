@@ -6,11 +6,15 @@ struct Uniforms {
 struct MatrixUniforms {
     model: mat4x4<f32>,
     inverse_model: mat4x4<f32>,
+    view: mat4x4<f32>,
+    projection: mat4x4<f32>,
 };
 
 struct Sphere {
-    centre: vec3f,
+    position: vec3f,
     radius: f32,  
+    velocity: vec3f,
+    mass: f32,
 }; 
 
 struct Plane {
@@ -124,7 +128,7 @@ fn get_background_plane() -> Plane {
 
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> f32 {
 
-    let oc = sphere.centre - ray.origin;
+    let oc = sphere.position - ray.origin;
     let a = dot(ray.direction, ray.direction);
     let b = -2.0 * dot(oc, ray.direction);
     let c = dot(oc, oc) - sphere.radius * sphere.radius;
@@ -182,7 +186,7 @@ fn trace_scene(ray: Ray) -> f32 {
 fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f) {
     var current_uv = start_uv;
     
-    for (var iter = 0u; iter < 500u; iter++) {
+    for (var iter = 0u; iter < 25u; iter++) {
         atomicAdd(&stats.chain_iterations, 1u);
         atomicAdd(&stats.total_rays, 2u); // 2 rays per iteration
         
@@ -232,6 +236,7 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     );
 
     seed_uv.y = delta * f32(id.x);
+    //seed_uv.x = 0.125;
 
     
     let world_pos = uv_to_world(seed_uv);
