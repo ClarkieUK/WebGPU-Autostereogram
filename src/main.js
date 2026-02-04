@@ -27,6 +27,7 @@ async function main()
 {
     let COUPLED_EYES = 0
     let RENDER_SPHERES = 1 
+    let SIMULATING = 0
 
     const MONITOR_WIDTH = 0.60 // m
     const MONITOR_HEIGHT = 0.35 
@@ -35,7 +36,7 @@ async function main()
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
 
-    const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 1;
+    const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 0.8;
     const recWidth =  MONITOR_WIDTH; 
     const recHeight = MONITOR_HEIGHT;
 
@@ -44,6 +45,7 @@ async function main()
     const settings = {
         enableProfiling: false,
         logInterval: 60,
+        noise: 0,
     };
 
     const profiler = new Profiler(device, 
@@ -77,6 +79,10 @@ async function main()
     RENDER_SPHERES = !RENDER_SPHERES;
     });
 
+    inputHandler.setKeyCallback('KeyI', () => {
+    SIMULATING = !SIMULATING;
+    });
+
     // uniforms
     const billboardUniformBuffer = device.createBuffer({
         label: 'uniforms',
@@ -84,14 +90,14 @@ async function main()
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    const billboardUniformBufferValues = new Float32Array(4);
+    const billboardUniformBufferValues = new Float32Array(5);
     const resolutionValue = billboardUniformBufferValues.subarray(0, 2);
     const rectangleDimensions = billboardUniformBufferValues.subarray(2, 4);
-    const noiseCount = billboardUniformBufferValues.subarray(-1);
+    const noiseCount = billboardUniformBufferValues.subarray(4,5);
 
     resolutionValue.set(MONITOR_RESOLUTION);
     rectangleDimensions.set([MONITOR_WIDTH, MONITOR_HEIGHT]); 
-    noiseCount.set([0])
+    noiseCount.set([settings.noise])
 
     device.queue.writeBuffer(billboardUniformBuffer, 0, billboardUniformBufferValues); 
 
@@ -104,7 +110,7 @@ async function main()
     const m = mat4.identity();
 
     // Scene buffer (eyes + spheres)
-    const numSpheres = 10000;
+    const numSpheres = 4;
     const sceneSize = 
         (4 * 4) +           // left_eye: vec4f
         (4 * 4) +           // right_eye: vec4f  
@@ -129,7 +135,7 @@ async function main()
     // sphere_count: u32
     sceneView.setUint32(offset, numSpheres, true); offset += 4;
     offset += 12; // padding to align array
-    const scale = 10;
+    const scale = 1;
     // spheres: array<Sphere> 
     for (let i = 0; i < numSpheres; i++) {
         // centre: vec3f            0->1 : -0.5->0.5 : -1.0->1.0 
@@ -151,7 +157,7 @@ async function main()
         sceneView.setFloat32(offset, r, true); offset += 4; // radius 
 
         // vxvyvz: vec3f (Math.random()-0.5) * 0.1
-        sceneView.setFloat32(offset,0, true); offset += 4; // x
+        sceneView.setFloat32(offset, 0, true); offset += 4; // x
         sceneView.setFloat32(offset, 0, true); offset += 4; // y
         sceneView.setFloat32(offset, 0, true); offset += 4; // z 
 
@@ -401,11 +407,13 @@ async function main()
 
         const encoder = device.createCommandEncoder({}); 
         
-        const physicsPass = encoder.beginComputePass();
-        physicsPass.setPipeline(physicsPipeline);
-        physicsPass.setBindGroup(0, physicsBindGroup);
-        physicsPass.dispatchWorkgroups(numSpheres); // One workgroup per sphere
-        physicsPass.end();
+        if (SIMULATING) {
+            const physicsPass = encoder.beginComputePass();
+            physicsPass.setPipeline(physicsPipeline);
+            physicsPass.setBindGroup(0, physicsBindGroup);
+            physicsPass.dispatchWorkgroups(numSpheres); // One workgroup per sphere
+            physicsPass.end();
+        }
 
         encoder.clearBuffer(splatStorageBuffer, 0, 4); // clear atomics
         encoder.clearBuffer(statsBuffer, 0, 12);
@@ -443,13 +451,19 @@ async function main()
         requestAnimationFrame(render);
     };
 
-    gui.onChange(render);
     gui.add(settings, 'enableProfiling')
         .name('profiling')
         .onChange(value => profiler.setEnabled(value));
     gui.add(settings, 'logInterval', 1, 300)
         .name('interval')
         .onChange(value => profiler.setLogInterval(value));
+    gui.add(settings, 'noise', 1, 5000)
+        .name('noise count')
+        .onChange(value => {
+        settings.noise = value;
+        noiseCount.set([value]);
+        device.queue.writeBuffer(billboardUniformBuffer, 16, noiseCount);
+    });
 
     const observer = new ResizeObserver(
         generateObserverCallback({ 

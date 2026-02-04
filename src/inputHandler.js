@@ -36,6 +36,10 @@ export class InputHandler {
                 if (this.onKeyO) this.onKeyO();
             }
 
+            if (e.code === 'KeyI') {
+                if (this.onKeyI) this.onKeyI();
+            }
+
         });
         
         window.addEventListener('keyup', (e) => {

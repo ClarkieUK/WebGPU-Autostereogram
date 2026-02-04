@@ -203,6 +203,26 @@ struct ourVsOutput {
         
         color += vec4f(seed_color * weight, weight);
     }
+
+    let noise_count = u32(uniforms.noiseCount);
+    for (var n = 0u; n < noise_count; n++) {
+        // Use different primes and offsets to decorrelate x and y
+        let noise_seed = f32(n);
+        let random_x = hash1(noise_seed * 73.12 + 15.789) * uniforms.dimensions.x - uniforms.dimensions.x / 2.0;
+        let random_y = hash1(noise_seed * 139.71 + 283.456) * uniforms.dimensions.y - uniforms.dimensions.y / 2.0;
+        
+        let noise_vertex_pos = vec2f(random_x, random_y);
+        let noise_world_pos = (matrixUniforms.model * vec4f(noise_vertex_pos, 0.0, 1.0)).xyz;
+        
+        let diff = frag_world_pos - noise_world_pos;
+        let dist_sq = dot(diff, diff);
+        
+        if (dist_sq <= cutoff_distance_sq) {
+            let weight = exp(-dist_sq / two_sigma_sq);
+            let noise_color = hash3(noise_seed * 197.3 + 412.89);
+            color += vec4f(noise_color * weight, weight);
+        }
+    }
     
     return vec4f(color.rgb, 1.0);
 }
