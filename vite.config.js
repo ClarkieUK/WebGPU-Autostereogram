@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-
+//WebGPU-Autostereogram/
 export default defineConfig({
   base: '/WebGPU-Autostereogram/',
   plugins: [
