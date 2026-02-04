@@ -1,6 +1,6 @@
 //@ts-nocheck
 
-import { Sphere } from './sphere';
+import { Sphere } from './sphere.js';
 import sphere_code from './shaders/sphereShader.wgsl?raw';
 
 import {

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { GPUProfiler } from "./gpuProfiler";
+import { GPUProfiler } from "./gpuProfiler.js";
 
 export class Profiler {
     constructor(device, settings = {}) {

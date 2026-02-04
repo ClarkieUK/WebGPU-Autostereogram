@@ -1,11 +1,10 @@
 import { defineConfig } from 'vite';
-import fs from 'fs';
-import path from 'path';
 
 export default defineConfig({
+  base: '/WebGPU-Autostereogram/',
   plugins: [
     {
-      name: 'watch-wgsl',
+      name: 'wgsl-hot-reload',
       handleHotUpdate({ file, server }) {
         if (file.endsWith('.wgsl')) {
           server.ws.send({

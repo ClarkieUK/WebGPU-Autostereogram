@@ -6,16 +6,16 @@ import compute_code from './shaders/generateEpipolars.wgsl?raw';
 import sphere_code from './shaders/sphereShader.wgsl?raw';
 import nbody_code from './shaders/integrator.wgsl?raw';
 
-import { initWebGPU } from './utils/initWebGPU';
-import { generateObserverCallback } from './utils/initWebGPU';
-import { GPUProfiler } from './utils/gpuProfiler';
-import { Profiler } from './utils/codeProfiler';
-import { rand } from './utils/randomNumber';
+import { initWebGPU } from './utils/initWebGPU.js';
+import { generateObserverCallback } from './utils/initWebGPU.js';
+import { GPUProfiler } from './utils/gpuProfiler.js';
+import { Profiler } from './utils/codeProfiler.js';
+import { rand } from './utils/randomNumber.js';
 import { Camera } from './camera.js';
 import { Sphere } from './sphere.js';
-import { SphereRenderer } from './sphereRenderer';
+import { SphereRenderer } from './sphereRenderer.js';
 import { InputHandler } from './inputHandler.js';
-import { Billboard } from './billboardManager';
+import { Billboard } from './billboardManager.js';
 
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
 import {
