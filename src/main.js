@@ -110,7 +110,7 @@ async function main()
     const m = mat4.identity();
 
     // Scene buffer (eyes + spheres)
-    const numSpheres = 4;
+    const numSpheres = 5;
     const sceneSize = 
         (4 * 4) +           // left_eye: vec4f
         (4 * 4) +           // right_eye: vec4f  

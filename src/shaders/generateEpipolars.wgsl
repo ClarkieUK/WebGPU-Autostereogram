@@ -214,6 +214,8 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f
     }
 }
 
+
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<uniform> matrixUniforms: MatrixUniforms;
 @group(0) @binding(2) var<storage, read> scene: Scene;
@@ -221,7 +223,7 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f
 @group(0) @binding(4) var<storage, read_write> stats: Stats;
 @group(0) @binding(5) var<uniform> backgroundPlane: BackgroundPlane;
 
-const NUM_SEEDS: u32 = 5 * 64u;
+const NUM_SEEDS: u32 = 4 * 64u;
 
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {

@@ -29,7 +29,7 @@ var<workgroup> shared_accel: array<vec3f, 64>;
 
 fn compute_acceleration(pos_i: vec3f, pos_j: vec3f, mass_j: f32) -> vec3f {
     let dr = pos_j - pos_i;
-    let dist_sq = dot(dr, dr) + 1e-6;
+    let dist_sq = dot(dr, dr) + 1e-4;
     let dist = sqrt(dist_sq);
     return params.G * mass_j * dr / (dist * dist * dist); 
 }
