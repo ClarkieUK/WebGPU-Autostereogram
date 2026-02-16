@@ -8,9 +8,11 @@ export class Profiler {
         
         this.stats = {
             frameCount: 0,
+            physicsTimeMs: 0,
             computeTimeMs: 0,
             renderTimeMs: 0,
             totalTimeMs: 0,
+            avgPhysicsMs: 0,
             avgComputeMs: 0,
             avgRenderMs: 0,
             avgTotalMs: 0,
@@ -48,24 +50,34 @@ export class Profiler {
         this.initialized = true;
     }
     
-    writeComputeStart(encoder) {
+    writePhysicsStart(encoder) {
         if (!this.enabled) return;
         encoder.writeTimestamp(this.gpuProfiler.querySet, 0);
     }
     
-    writeComputeEnd(encoder) {
+    writePhysicsEnd(encoder) {
         if (!this.enabled) return;
         encoder.writeTimestamp(this.gpuProfiler.querySet, 1);
     }
     
-    writeRenderStart(encoder) {
+    writeComputeStart(encoder) {
         if (!this.enabled) return;
         encoder.writeTimestamp(this.gpuProfiler.querySet, 2);
+    }
+    
+    writeComputeEnd(encoder) {
+        if (!this.enabled) return;
+        encoder.writeTimestamp(this.gpuProfiler.querySet, 3);
+    }
+    
+    writeRenderStart(encoder) {
+        if (!this.enabled) return;
+        encoder.writeTimestamp(this.gpuProfiler.querySet, 4);
     }
 
     writeRenderEnd(encoder) {
         if (!this.enabled) return;
-        encoder.writeTimestamp(this.gpuProfiler.querySet, 3);
+        encoder.writeTimestamp(this.gpuProfiler.querySet, 5);
     }
     
     copyBuffersForReading(encoder, splatStorageBuffer, statsBuffer) {
@@ -80,7 +92,7 @@ export class Profiler {
         if (!this.enabled) return;
         
         encoder.resolveQuerySet(
-            this.gpuProfiler.querySet, 0, 4, 
+            this.gpuProfiler.querySet, 0, 6,  // Changed from 4 to 6
             this.gpuProfiler.resolveBuffer, 0
         );
         encoder.copyBufferToBuffer(
@@ -93,25 +105,26 @@ export class Profiler {
     async updateStats(deltaTime) {
         if (!this.enabled) return;
         
-
         const timingResults = await this.gpuProfiler.getResults();
         
-        if (timingResults.length >= 2) {
-            const computeTime = timingResults[0].durationMs; // timestamps 0-1
-            const renderTime = timingResults[1].durationMs;  // timestamps 2-3
-            const totalTime = computeTime + renderTime;
+        if (timingResults.length >= 3) {
+            const physicsTime = timingResults[0].durationMs;  // timestamps 0-1
+            const computeTime = timingResults[1].durationMs;  // timestamps 2-3
+            const renderTime = timingResults[2].durationMs;   // timestamps 4-5
+            const totalTime = physicsTime + computeTime + renderTime;
             
             this.stats.frameCount++;
+            this.stats.physicsTimeMs += physicsTime;
             this.stats.computeTimeMs += computeTime;
             this.stats.renderTimeMs += renderTime;
             this.stats.totalTimeMs += totalTime;
             
+            this.stats.avgPhysicsMs = this.stats.physicsTimeMs / this.stats.frameCount;
             this.stats.avgComputeMs = this.stats.computeTimeMs / this.stats.frameCount;
             this.stats.avgRenderMs = this.stats.renderTimeMs / this.stats.frameCount;
             this.stats.avgTotalMs = this.stats.totalTimeMs / this.stats.frameCount;
         }
         
-
         await this.splatReadBuffer.mapAsync(GPUMapMode.READ);
         const splatCountData = new Uint32Array(this.splatReadBuffer.getMappedRange());
         this.stats.splatCount = splatCountData[0];
@@ -143,20 +156,24 @@ export class Profiler {
         console.log(`Total rays: ${this.stats.totalRays}`);
         console.log(`Successful rays: ${this.stats.successfulRays}`);
         console.log(`Chain iterations: ${this.stats.chainIterations}`);
-        console.log(`Avg Compute: ${this.stats.avgComputeMs.toFixed(3)} ms`);
-        console.log(`Avg Render:  ${this.stats.avgRenderMs.toFixed(3)} ms`);
-        console.log(`Avg Total (GPU):   ${this.stats.avgTotalMs.toFixed(3)} ms`);
-        console.log(`Avg Total (CPU):         ${cpuTimeMs.toFixed(5)} ms`);
-        console.log(`GPU FPS:         ${gpuFps.toFixed(1)}`);
-        console.log(`CPU FPS:         ${cpuFps.toFixed(1)}`);
+        console.log(`Avg Physics:  ${this.stats.avgPhysicsMs.toFixed(3)} ms`);
+        console.log(`Avg Compute:  ${this.stats.avgComputeMs.toFixed(3)} ms (raytracing)`);
+        console.log(`Avg Render:   ${this.stats.avgRenderMs.toFixed(3)} ms`);
+        console.log(`Avg Total (GPU): ${this.stats.avgTotalMs.toFixed(3)} ms`);
+        console.log(`Avg Total (CPU): ${cpuTimeMs.toFixed(5)} ms`);
+        console.log(`GPU FPS: ${gpuFps.toFixed(1)}`);
+        console.log(`CPU FPS: ${cpuFps.toFixed(1)}`);
         console.log(`Theoretical rays/s: ${raysPerSecond.toExponential(2)}`);
+        console.log(`GPU Breakdown: Physics ${((this.stats.avgPhysicsMs/this.stats.avgTotalMs)*100).toFixed(1)}% | Compute ${((this.stats.avgComputeMs/this.stats.avgTotalMs)*100).toFixed(1)}% | Render ${((this.stats.avgRenderMs/this.stats.avgTotalMs)*100).toFixed(1)}%`);
     }
     
     reset() {
         this.stats.frameCount = 0;
+        this.stats.physicsTimeMs = 0;
         this.stats.computeTimeMs = 0;
         this.stats.renderTimeMs = 0;
         this.stats.totalTimeMs = 0;
+        this.stats.avgPhysicsMs = 0;
         this.stats.avgComputeMs = 0;
         this.stats.avgRenderMs = 0;
         this.stats.avgTotalMs = 0;
@@ -174,17 +191,14 @@ export class Profiler {
         }
     }
     
-
     setLogInterval(interval) {
         this.logInterval = Math.max(1, interval);
     }
     
-
     getStats() {
         return { ...this.stats };
     }
     
-
     destroy() {
         if (this.splatReadBuffer) {
             this.splatReadBuffer.destroy();

@@ -227,11 +227,11 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f
 @group(0) @binding(4) var<storage, read_write> stats: Stats;
 @group(0) @binding(5) var<uniform> backgroundPlane: BackgroundPlane;
 
-/*
+
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {
     let seed_id = id.x;
-    if (seed_id >= uniforms.seedCount) { return; }
+    if (seed_id >= u32(uniforms.seedCount)) { return; }
 
     let delta = 1 / f32(uniforms.seedCount);
 
@@ -240,6 +240,7 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
         hash1(f32(seed_id+0) + 100.0)
     );
 
+    // controlled sampling, introduces the occlusion problem tho
     //seed_uv.y = delta * f32(id.x);
     //seed_uv.y = delta * f32(id.x) + hash1(f32(seed_id) + 200.0) * delta * 0.5;
     //seed_uv.x = 0.125;
@@ -274,8 +275,8 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     
     chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz); // from right to left
     chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
-}*/
-
+}
+/*
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {
     let seed_id = id.x;
@@ -342,7 +343,7 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
 
     //chain_direction(top_uv, seed_id, scene.rotated_left_eye.xyz, scene.right_eye.xyz);
     //chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.rotated_left_eye.xyz);
-}
+}*/
 
 /*
 @compute @workgroup_size(64) 

@@ -37,7 +37,7 @@ async function main()
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
-    const numSpheres = 5;
+    const numSpheres = 1000;
 
     const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 0.8;
     const recWidth =  MONITOR_WIDTH; 
@@ -46,12 +46,12 @@ async function main()
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
     const settings = {
-        enableProfiling: true,
+        enableProfiling: false,
         logInterval: 60,
         noise: 0,
         angle: 0,
         scaler: 1,
-        seedCount: 96,
+        seedCount: 215,
     };
 
     const profiler = new Profiler(device, 
@@ -61,7 +61,7 @@ async function main()
 
     const gui = new GUI();
 
-    const scene = new Scene(device, IPD, VIEWING_DISTANCE, SCENE_GAP, 1.0, numSpheres);
+    const scene = new Scene(device, IPD, VIEWING_DISTANCE, SCENE_GAP, 10.0, numSpheres);
 
     // world geometries
     const sphereGeometry = new Sphere(20);
@@ -190,7 +190,7 @@ async function main()
 
     const physicsParams = new Float32Array(2);
     physicsParams[0] = 0.016; 
-    physicsParams[1] = 6.674e-3; 
+    physicsParams[1] = 6.674e-4; 
     device.queue.writeBuffer(physicsParamsBuffer, 0, physicsParams);
 
     const physicsModule = device.createShaderModule({
@@ -327,13 +327,17 @@ async function main()
 
         const encoder = device.createCommandEncoder({}); 
         
+        profiler.writePhysicsStart(encoder);
         if (SIMULATING) {
+            
             const physicsPass = encoder.beginComputePass();
             physicsPass.setPipeline(physicsPipeline);
             physicsPass.setBindGroup(0, physicsBindGroup);
             physicsPass.dispatchWorkgroups(numSpheres); // One workgroup per sphere
             physicsPass.end();
+            
         }
+        profiler.writePhysicsEnd(encoder);
 
         encoder.clearBuffer(splatStorageBuffer, 0, 4); // clear atomics
         encoder.clearBuffer(statsBuffer, 0, 12);

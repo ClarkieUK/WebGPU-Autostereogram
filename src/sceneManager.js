@@ -7,15 +7,15 @@ import {
 } from 'https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js';
 
 function mass(r) {
-    return 4/3 * Math.PI * r ** 3 * 0.1; // density of 0.1kg / m
+    return 4/3 * Math.PI * r ** 3 * 500; // density of 0.1kg / m
 }
 
 export class Scene {
   constructor(device, IPD, viewingDistance, sceneGap, scale, sphereCount) {
     const valuesPerSphere = 8;
-    const sceneSize = (20 + 8 * sphereCount) * 4; // bytes
+    const sceneSize = (20 + valuesPerSphere * sphereCount) * 4; // bytes
 
-    this.sceneData = new Float32Array(20 + 8 * sphereCount);
+    this.sceneData = new Float32Array(20 + valuesPerSphere * sphereCount);
     const buffer = this.sceneData.buffer;
     const dataView = new DataView(buffer); // need this to set the integer sphere count
     // 4 + 4 + 4 + 4 + 1 + 3(pad) + 8 floats per sphere
