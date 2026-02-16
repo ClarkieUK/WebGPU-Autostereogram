@@ -46,7 +46,7 @@ async function main()
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
     const settings = {
-        enableProfiling: false,
+        enableProfiling: true,
         logInterval: 60,
         noise: 0,
         angle: 0,
@@ -144,11 +144,7 @@ async function main()
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
 
-    const statsReadBuffer = device.createBuffer({
-        label: 'stats read',
-        size: 3 * 4,
-        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-    });
+
  
     const backgroundPlaneBuffer = device.createBuffer({
         label: 'background plane buffer',

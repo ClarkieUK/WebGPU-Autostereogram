@@ -1,12 +1,4 @@
-- create a sphere module that puts a really simple sphere on the screen
-needs vertex data generated and shuffled in, then a module and bindgroup , camera matrix uniforms... 
-
-- create shader for n body integration, use workgroup id / thread id method technique probably
-will have to expand sphere storage buffer to contain the mass , velocity too, probably something like 
-
-- r, px, py, pz, m, vx, vy, vz,(8 * 4 * N) bytes at the end of the buffer, which can then be modified and written into with the 
-shader  
-
-- add a random dots param in the uniforms buffer than tells the fragment shader how much uncorrelated noise to add to screen, 
-
 - modularise all code into software ish packaging, getting frustrating moving around the main file now...
+
+- somehow solve this fucking invariant rotation stereogram, I cant believe how hard this problem is to solve,
+perhapds impossible. gl to me in the future...
