@@ -10,12 +10,14 @@ function mass(r) {
     return 4/3 * Math.PI * r ** 3 * 0.1; // density of 0.1kg / m
 }
 
-export class Profiler {
-  constructor(device, IPD, viewingDistance, scale, sphereCount) {
+export class Scene {
+  constructor(device, IPD, viewingDistance, sceneGap, scale, sphereCount) {
     const valuesPerSphere = 8;
     const sceneSize = (20 + 8 * sphereCount) * 4; // bytes
 
     this.sceneData = new Float32Array(20 + 8 * sphereCount);
+    const buffer = this.sceneData.buffer;
+    const dataView = new DataView(buffer); // need this to set the integer sphere count
     // 4 + 4 + 4 + 4 + 1 + 3(pad) + 8 floats per sphere
 
     this.leftEyeData = this.sceneData.subarray(0, 4);
@@ -23,8 +25,7 @@ export class Profiler {
     this.rotatedLeftEyeData = this.sceneData.subarray(8, 12);
     this.rotatedRightEyeData = this.sceneData.subarray(12, 16); // 0 -> 15
 
-    this.sphereCountData = this.sceneData.subarray(16,17);
-    this.sphereCountData.set([sphereCount]);
+    dataView.setUint32(16 * 4, sphereCount, true); 
 
     this.sphereDataSpace = this.sceneData.subarray(20, 20 + valuesPerSphere * sphereCount);
 
@@ -39,7 +40,7 @@ export class Profiler {
 
         let x = (Math.random() - 0.5) * 2 * scale;
         let y = (Math.random() - 0.5) * 2 * scale;
-        let z = -Math.random() * SCENE_GAP * scale;
+        let z = -Math.random() * sceneGap * scale;
 
         let r =  (Math.random() * 0.25);
 

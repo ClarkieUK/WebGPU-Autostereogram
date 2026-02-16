@@ -16,6 +16,7 @@ import { Sphere } from './sphere.js';
 import { SphereRenderer } from './sphereRenderer.js';
 import { InputHandler } from './inputHandler.js';
 import { Billboard } from './billboardManager.js';
+import { Scene } from './sceneManager.js';
 
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
 import {
@@ -36,6 +37,7 @@ async function main()
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
+    const numSpheres = 5;
 
     const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 0.8;
     const recWidth =  MONITOR_WIDTH; 
@@ -49,7 +51,7 @@ async function main()
         noise: 0,
         angle: 0,
         scaler: 1,
-        seedCount: 64,
+        seedCount: 96,
     };
 
     const profiler = new Profiler(device, 
@@ -59,10 +61,11 @@ async function main()
 
     const gui = new GUI();
 
+    const scene = new Scene(device, IPD, VIEWING_DISTANCE, SCENE_GAP, 1.0, numSpheres);
+
     // world geometries
     const sphereGeometry = new Sphere(20);
     const sphereRenderer = new SphereRenderer(device, presentationFormat, 20);
-
     const billboard = new Billboard(device, presentationFormat, recWidth, recHeight);
 
     // camera orientated stuff
@@ -114,81 +117,6 @@ async function main()
     });
 
     const m = mat4.identity();
-
-    // Scene buffer (eyes + spheres)
-    const numSpheres = 5;
-    const sceneSize = 
-        (4 * 4) +           // left_eye: vec4f
-        (4 * 4) +           // right_eye: vec4f  
-        (4 * 4) +
-        (4 * 4) +
-        (1 * 4) + (3 * 4) + // sphere_count: u32 + padding
-        ((3+1+3+1) * 4 * numSpheres);  // spheres array (32 bytes each: vec3f + f32 + vec3f + f32)
-
-    const sceneData = new ArrayBuffer(sceneSize);
-    const sceneView = new DataView(sceneData);
-
-    let offset = 0;
-
-    sceneView.setFloat32(offset, -IPD/2, true); offset += 4; 
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
-    sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
-
-    sceneView.setFloat32(offset, IPD/2, true); offset += 4;  
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;   
-    sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
-
-    sceneView.setFloat32(offset, 0, true); offset += 4;  
-    sceneView.setFloat32(offset, IPD * Math.sqrt(3/4), true); offset += 4;   
-    sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
-
-    sceneView.setFloat32(offset, 0, true); offset += 4;  
-    sceneView.setFloat32(offset, IPD * Math.sqrt(3/4), true); offset += 4;   
-    sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
-    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
-
-    // sphere_count: u32
-    sceneView.setUint32(offset, numSpheres, true); offset += 4;
-    offset += 12; // padding to align array
-    const scale = 1;
-    // spheres: array<Sphere> 
-    for (let i = 0; i < numSpheres; i++) {
-        // centre: vec3f            0->1 : -0.5->0.5 : -1.0->1.0 
-
-        let x = (Math.random() - 0.5) * 2 * scale;
-        let y = (Math.random() - 0.5) * 2 * scale;
-        let z = -Math.random() * SCENE_GAP * scale;
-
-        let r =  (Math.random() * 0.25);
-
-        //console.log(x,y,z,r);
-
-        // pyz: vec3f
-        sceneView.setFloat32(offset, x, true); offset += 4; // x
-        sceneView.setFloat32(offset, y, true); offset += 4; // y
-        sceneView.setFloat32(offset, z, true); offset += 4; // z 
-        
-        // r: f32
-        sceneView.setFloat32(offset, r, true); offset += 4; // radius 
-
-        // vxvyvz: vec3f (Math.random()-0.5) * 0.1
-        sceneView.setFloat32(offset, 0, true); offset += 4; // x
-        sceneView.setFloat32(offset, 0, true); offset += 4; // y
-        sceneView.setFloat32(offset, 0, true); offset += 4; // z 
-
-        sceneView.setFloat32(offset, r, true); offset += 4;
-    }
-
-    const sceneBuffer = device.createBuffer({
-        label: 'scene storage',
-        size: sceneSize,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
-
-    device.queue.writeBuffer(sceneBuffer, 0, sceneData);
 
     // Splat buffer
     const maxSplats = 10000;
@@ -248,14 +176,14 @@ async function main()
         entries: [
             { binding: 0, resource: { buffer: billboardUniformBuffer }},
             { binding: 1, resource: { buffer: matrixUniformBuffer }},
-            { binding: 2, resource: { buffer: sceneBuffer }},
+            { binding: 2, resource: { buffer: scene.sceneBuffer }},
             { binding: 3, resource: { buffer: splatStorageBuffer }},
             { binding: 4, resource: { buffer: statsBuffer }},
             { binding: 5, resource: { buffer: backgroundPlaneBuffer }}
         ]
     })
 
-    sphereRenderer.createBindGroup(matrixUniformBuffer, sceneBuffer);
+    sphereRenderer.createBindGroup(matrixUniformBuffer, scene.sceneBuffer);
     billboard.createBindGroup(billboardUniformBuffer, splatStorageBuffer, matrixUniformBuffer);
 
     const physicsParamsBuffer = device.createBuffer({
@@ -285,7 +213,7 @@ async function main()
         label: 'physics',
         layout: physicsPipeline.getBindGroupLayout(0),
         entries: [
-            { binding: 0, resource: { buffer: sceneBuffer }},
+            { binding: 0, resource: { buffer: scene.sceneBuffer }},
             { binding: 1, resource: { buffer: physicsParamsBuffer }},
         ]
     });
@@ -321,48 +249,6 @@ async function main()
 
     let framesSinceLog = 0;
     let isRendering = false;
-
-    function updateEyePositions(device, sceneBuffer, camera, IPD, angle, otherIPD) {
-        const cameraRight = camera.right; 
-        const halfIPD = IPD / 2;
-
-        const theta = angle * Math.PI/180;
-
-        const rotationMatrix = mat4.axisRotation(camera.front, theta);
-
-        const leftEye = vec3.sub(camera.position, vec3.mulScalar(cameraRight, halfIPD));
-        const rightEye = vec3.add(camera.position, vec3.mulScalar(cameraRight, halfIPD));
-
-        const eyeOffset = vec3.mulScalar(cameraRight, otherIPD / 2);
-        const rotatedOffset = vec3.transformMat4(eyeOffset, rotationMatrix);
-
-        const leftEyeRotated = vec3.sub(camera.position, rotatedOffset);
-        const rightEyeRotated = vec3.add(camera.position, rotatedOffset);
-
-        const eyeData = new Float32Array(16); 
-        
-        eyeData[0] = leftEye[0];
-        eyeData[1] = leftEye[1];
-        eyeData[2] = leftEye[2];
-        eyeData[3] = 0.0; // padding
-        
-        eyeData[4] = rightEye[0];
-        eyeData[5] = rightEye[1];
-        eyeData[6] = rightEye[2];
-        eyeData[7] = 0.0; // padding
-
-        eyeData[8]  = leftEyeRotated[0];
-        eyeData[9]  = leftEyeRotated[1];
-        eyeData[10] = leftEyeRotated[2];
-        eyeData[11] = 0.0; // padding
-
-        eyeData[12] = rightEyeRotated[0];
-        eyeData[13] = rightEyeRotated[1];
-        eyeData[14] = rightEyeRotated[2];
-        eyeData[15] = 0.0; // padding
-        
-        device.queue.writeBuffer(sceneBuffer, 0, eyeData);
-    }
 
     function createBillboardMatrix(camera, distance = VIEWING_DISTANCE) {
 
@@ -418,7 +304,7 @@ async function main()
             device.queue.writeBuffer(matrixUniformBuffer, (1 * 16) * 4, mat4.inverse(billboardTransform));
         };
 
-        updateEyePositions(device, sceneBuffer, camera, IPD, settings.angle, settings.scaler * IPD);
+        scene.updateEyePositions(device, camera, IPD, settings.angle, settings.scaler * IPD);
 
         // updates for background plane
         // first move the plane origin to the desired distance
@@ -528,6 +414,7 @@ async function main()
             onResize: updateDepthTexture  
         })
     );
+
     observer.observe(canvas);
 }
 

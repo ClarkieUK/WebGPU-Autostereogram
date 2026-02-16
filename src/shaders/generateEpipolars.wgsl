@@ -231,9 +231,9 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {
     let seed_id = id.x;
-    if (seed_id >= NUM_SEEDS) { return; }
+    if (seed_id >= uniforms.seedCount) { return; }
 
-    let delta = 1 / f32(NUM_SEEDS);
+    let delta = 1 / f32(uniforms.seedCount);
 
     var seed_uv = vec2f(
         hash1(f32(seed_id+0)),
@@ -275,11 +275,11 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz); // from right to left
     chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
 }*/
-/*
+
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {
     let seed_id = id.x;
-    if (seed_id >= NUM_SEEDS) { return; }
+    if (seed_id >= u32(uniforms.seedCount)) { return; }
     
     // Triangular lattice arrangement
     let ipd = 0.065; // Use your actual IPD value
@@ -342,93 +342,16 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
 
     //chain_direction(top_uv, seed_id, scene.rotated_left_eye.xyz, scene.right_eye.xyz);
     //chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.rotated_left_eye.xyz);
-}*/
+}
 
 /*
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {
 
-    let NUM_SEEDS: u32 = u32(uniforms.seedCount);
+    let uniforms.seedCount: u32 = u32(uniforms.seedCount);
 
     let seed_id = id.x;
-    if (seed_id >= NUM_SEEDS) { return; }
-
-    var seed_uv = vec2f(
-        hash1(f32(seed_id+0)),
-        hash1(f32(seed_id+0) + 1000.0)
-    );
-    
-    let world_pos = uv_to_world(seed_uv);
-
-    let left_ray = Ray(scene.left_eye.xyz, normalize(world_pos - scene.left_eye.xyz));
-    let t = trace_scene(left_ray);
-    
-    atomicAdd(&stats.total_rays, 1u);
-    
-    if (t > 0.0) {
-        atomicAdd(&stats.successful_rays, 1u);
-        
-        let scene_hit = left_ray.origin + left_ray.direction * t;
-        
-        let right_ray = Ray(scene.right_eye.xyz, normalize(scene_hit - scene.right_eye.xyz));
-        let right_t = trace_scene(right_ray);
-        
-        atomicAdd(&stats.total_rays, 1u);
-        
-        if (right_t > 0.0) {
-            let right_verify = right_ray.origin + right_ray.direction * right_t;
-            
-            if (distance(scene_hit, right_verify) < 0.01) {
-                let right_uv = get_rect_intersect(scene_hit, scene.right_eye.xyz);
-                
-                write_splat(seed_uv, seed_id);
-                write_splat(right_uv, seed_id);
-                
-                chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz);
-                chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
-            }
-        }
-    }
-    
-    let rotated_left_ray = Ray(scene.rotated_left_eye.xyz, normalize(world_pos - scene.rotated_left_eye.xyz));
-    let rotated_t = trace_scene(rotated_left_ray);
-    
-    atomicAdd(&stats.total_rays, 1u);
-    
-    if (rotated_t > 0.0) {
-        atomicAdd(&stats.successful_rays, 1u);
-        
-        let scene_hit_rotated = rotated_left_ray.origin + rotated_left_ray.direction * rotated_t;
-        
-        let rotated_right_ray = Ray(scene.rotated_right_eye.xyz, normalize(scene_hit_rotated - scene.rotated_right_eye.xyz));
-        let rotated_right_t = trace_scene(rotated_right_ray);
-        
-        atomicAdd(&stats.total_rays, 1u);
-        
-        if (rotated_right_t > 0.0) {
-            let rotated_right_verify = rotated_right_ray.origin + rotated_right_ray.direction * rotated_right_t;
-            
-            if (distance(scene_hit_rotated, rotated_right_verify) < 0.01) {
-                let rotated_right_uv = get_rect_intersect(scene_hit_rotated, scene.rotated_right_eye.xyz);
-                
-                write_splat(seed_uv, seed_id);
-                write_splat(rotated_right_uv, seed_id);
-                
-                chain_direction(rotated_right_uv, seed_id, scene.rotated_right_eye.xyz, scene.rotated_left_eye.xyz);
-                chain_direction(seed_uv, seed_id, scene.rotated_left_eye.xyz, scene.rotated_right_eye.xyz);
-            }
-        }
-    }
-}*/
-
-/*
-@compute @workgroup_size(64) 
-fn cs(@builtin(global_invocation_id) id: vec3u) {
-
-    let NUM_SEEDS: u32 = u32(uniforms.seedCount);
-
-    let seed_id = id.x;
-    if (seed_id >= NUM_SEEDS) { return; }
+    if (seed_id >= uniforms.seedCount) { return; }
 
     var seed_uv = vec2f(
         hash1(f32(seed_id+0)),
@@ -496,103 +419,7 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     chain_direction(rotated_left_uv, seed_id, scene.rotated_left_eye.xyz, scene.rotated_right_eye.xyz);
 } */
 
-@compute @workgroup_size(64) 
-fn cs(@builtin(global_invocation_id) id: vec3u) {
 
-    let NUM_SEEDS: u32 = u32(uniforms.seedCount);
-
-    let seed_id = id.x;
-    if (seed_id >= NUM_SEEDS) { return; }
-
-    // === PARALLELOGRAM LATTICE SAMPLING ===
-    // Sample at intersections of two epipolar line families
-    
-    let ipd_fraction = 0.065 / uniforms.dimensions.y; // IPD as fraction of screen
-    let spacing = ipd_fraction * 4.0; // Spacing between epipolar lines
-    
-    let grid_size = u32(sqrt(f32(NUM_SEEDS)));
-    let i = seed_id % grid_size;
-    let j = seed_id / grid_size;
-    
-    // Baseline 1: horizontal direction (angle = 0)
-    let u1 = vec2f(1.0, 0.0);
-    
-    // Baseline 2: rotated direction (angle from your slider)
-    // You'll need to pass the angle as a uniform, for now assume some rotation
-    let angle = 150.0 * 3.14159265359 / 180.0; // Your baseline angle in radians
-    let u2 = vec2f(cos(angle), sin(angle));
-    
-    // Create parallelogram lattice: position = i*spacing*u1 + j*spacing*u2
-    let offset = vec2f(0.5, 0.5); // Center the lattice
-    var seed_uv = offset + 
-                  f32(i) * spacing * u1 + 
-                  f32(j) * spacing * u2;
-    
-    // Wrap to [0,1]
-    seed_uv = fract(seed_uv);
-    
-    // === END LATTICE SAMPLING ===
-    
-    let world_pos = uv_to_world(seed_uv);
-
-    // Cast from left eye to find a 3D point
-    let left_ray = Ray(scene.left_eye.xyz, normalize(world_pos - scene.left_eye.xyz));
-    let t = trace_scene(left_ray);
-    
-    atomicAdd(&stats.total_rays, 1u);
-    
-    if (t < 0.0) { return; }
-    
-    atomicAdd(&stats.successful_rays, 1u);
-    
-    let scene_hit = left_ray.origin + left_ray.direction * t;
-    
-    // Verify ALL FOUR eyes see the SAME 3D point
-    let right_ray = Ray(scene.right_eye.xyz, normalize(scene_hit - scene.right_eye.xyz));
-    let right_t = trace_scene(right_ray);
-    
-    let rotated_left_ray = Ray(scene.rotated_left_eye.xyz, normalize(scene_hit - scene.rotated_left_eye.xyz));
-    let rotated_left_t = trace_scene(rotated_left_ray);
-    
-    let rotated_right_ray = Ray(scene.rotated_right_eye.xyz, normalize(scene_hit - scene.rotated_right_eye.xyz));
-    let rotated_right_t = trace_scene(rotated_right_ray);
-    
-    atomicAdd(&stats.total_rays, 3u);
-    
-    // If any eye can't see the point, skip this seed
-    if (right_t < 0.0 || rotated_left_t < 0.0 || rotated_right_t < 0.0) { return; }
-    
-    // Verify all rays converge to the SAME 3D point (within tolerance)
-    let right_verify = right_ray.origin + right_ray.direction * right_t;
-    let rotated_left_verify = rotated_left_ray.origin + rotated_left_ray.direction * rotated_left_t;
-    let rotated_right_verify = rotated_right_ray.origin + rotated_right_ray.direction * rotated_right_t;
-    
-    if (distance(scene_hit, right_verify) > 0.01 || 
-        distance(scene_hit, rotated_left_verify) > 0.01 ||
-        distance(scene_hit, rotated_right_verify) > 0.01) { 
-        return; 
-    }
-    
-    // All eyes agree on the same 3D point! Calculate UV positions for each view
-    let right_uv = get_rect_intersect(scene_hit, scene.right_eye.xyz);
-    let rotated_left_uv = get_rect_intersect(scene_hit, scene.rotated_left_eye.xyz);
-    let rotated_right_uv = get_rect_intersect(scene_hit, scene.rotated_right_eye.xyz);
-    
-    // Write splats with SAME seed_id for stereopsis consistency
-    write_splat(seed_uv, seed_id);
-    write_splat(right_uv, seed_id);
-    write_splat(rotated_left_uv, seed_id);
-    write_splat(rotated_right_uv, seed_id);
-    
-    // Chain along BOTH baselines to fill in epipolar lines
-    // Horizontal baseline
-    chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz);
-    chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
-    
-    // Rotated baseline  
-    chain_direction(rotated_right_uv, seed_id, scene.rotated_right_eye.xyz, scene.rotated_left_eye.xyz);
-    chain_direction(rotated_left_uv, seed_id, scene.rotated_left_eye.xyz, scene.rotated_right_eye.xyz);
-}
 fn hash1(p: f32) -> f32 { // yoinked a better hash function from somewhere 
     var p_mut = fract(p * 0.1031);
     p_mut *= p_mut + 33.33;
