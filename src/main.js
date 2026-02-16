@@ -20,12 +20,13 @@ import { Billboard } from './billboardManager.js';
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
 import {
   vec3,
+  vec4,
   mat4,
 } from 'https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js';
 
 async function main()
 {
-    let COUPLED_EYES = 0
+    let COUPLED_EYES = 1
     let RENDER_SPHERES = 1 
     let SIMULATING = 0
 
@@ -46,6 +47,9 @@ async function main()
         enableProfiling: false,
         logInterval: 60,
         noise: 0,
+        angle: 0,
+        scaler: 1,
+        seedCount: 64,
     };
 
     const profiler = new Profiler(device, 
@@ -86,18 +90,20 @@ async function main()
     // uniforms
     const billboardUniformBuffer = device.createBuffer({
         label: 'uniforms',
-        size: 6 * 4,
+        size: 4 * 4 + 1 * 4 + 1 * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    const billboardUniformBufferValues = new Float32Array(5);
+    const billboardUniformBufferValues = new Float32Array(6);
     const resolutionValue = billboardUniformBufferValues.subarray(0, 2);
     const rectangleDimensions = billboardUniformBufferValues.subarray(2, 4);
     const noiseCount = billboardUniformBufferValues.subarray(4,5);
+    const seedCount = billboardUniformBufferValues.subarray(5,6);
 
     resolutionValue.set(MONITOR_RESOLUTION);
     rectangleDimensions.set([MONITOR_WIDTH, MONITOR_HEIGHT]); 
-    noiseCount.set([settings.noise])
+    noiseCount.set([settings.noise]);
+    seedCount.set([settings.seedCount]);
 
     device.queue.writeBuffer(billboardUniformBuffer, 0, billboardUniformBufferValues); 
 
@@ -114,6 +120,8 @@ async function main()
     const sceneSize = 
         (4 * 4) +           // left_eye: vec4f
         (4 * 4) +           // right_eye: vec4f  
+        (4 * 4) +
+        (4 * 4) +
         (1 * 4) + (3 * 4) + // sphere_count: u32 + padding
         ((3+1+3+1) * 4 * numSpheres);  // spheres array (32 bytes each: vec3f + f32 + vec3f + f32)
 
@@ -129,6 +137,16 @@ async function main()
 
     sceneView.setFloat32(offset, IPD/2, true); offset += 4;  
     sceneView.setFloat32(offset, 0.0, true); offset += 4;   
+    sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
+
+    sceneView.setFloat32(offset, 0, true); offset += 4;  
+    sceneView.setFloat32(offset, IPD * Math.sqrt(3/4), true); offset += 4;   
+    sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
+    sceneView.setFloat32(offset, 0.0, true); offset += 4;    
+
+    sceneView.setFloat32(offset, 0, true); offset += 4;  
+    sceneView.setFloat32(offset, IPD * Math.sqrt(3/4), true); offset += 4;   
     sceneView.setFloat32(offset, VIEWING_DISTANCE, true); offset += 4;    
     sceneView.setFloat32(offset, 0.0, true); offset += 4;    
 
@@ -304,14 +322,24 @@ async function main()
     let framesSinceLog = 0;
     let isRendering = false;
 
-    function updateEyePositions(device, sceneBuffer, camera, IPD) {
+    function updateEyePositions(device, sceneBuffer, camera, IPD, angle, otherIPD) {
         const cameraRight = camera.right; 
         const halfIPD = IPD / 2;
+
+        const theta = angle * Math.PI/180;
+
+        const rotationMatrix = mat4.axisRotation(camera.front, theta);
 
         const leftEye = vec3.sub(camera.position, vec3.mulScalar(cameraRight, halfIPD));
         const rightEye = vec3.add(camera.position, vec3.mulScalar(cameraRight, halfIPD));
 
-        const eyeData = new Float32Array(8); 
+        const eyeOffset = vec3.mulScalar(cameraRight, otherIPD / 2);
+        const rotatedOffset = vec3.transformMat4(eyeOffset, rotationMatrix);
+
+        const leftEyeRotated = vec3.sub(camera.position, rotatedOffset);
+        const rightEyeRotated = vec3.add(camera.position, rotatedOffset);
+
+        const eyeData = new Float32Array(16); 
         
         eyeData[0] = leftEye[0];
         eyeData[1] = leftEye[1];
@@ -322,6 +350,16 @@ async function main()
         eyeData[5] = rightEye[1];
         eyeData[6] = rightEye[2];
         eyeData[7] = 0.0; // padding
+
+        eyeData[8]  = leftEyeRotated[0];
+        eyeData[9]  = leftEyeRotated[1];
+        eyeData[10] = leftEyeRotated[2];
+        eyeData[11] = 0.0; // padding
+
+        eyeData[12] = rightEyeRotated[0];
+        eyeData[13] = rightEyeRotated[1];
+        eyeData[14] = rightEyeRotated[2];
+        eyeData[15] = 0.0; // padding
         
         device.queue.writeBuffer(sceneBuffer, 0, eyeData);
     }
@@ -380,7 +418,7 @@ async function main()
             device.queue.writeBuffer(matrixUniformBuffer, (1 * 16) * 4, mat4.inverse(billboardTransform));
         };
 
-        updateEyePositions(device, sceneBuffer, camera, IPD);
+        updateEyePositions(device, sceneBuffer, camera, IPD, settings.angle, settings.scaler * IPD);
 
         // updates for background plane
         // first move the plane origin to the desired distance
@@ -424,7 +462,7 @@ async function main()
         const computePass = encoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, computebindGroup);
-        computePass.dispatchWorkgroups(Math.ceil(1024 / 64));
+        computePass.dispatchWorkgroups(Math.ceil(4096 / 64));
         computePass.end();
 
         profiler.writeComputeEnd(encoder);
@@ -463,6 +501,23 @@ async function main()
         settings.noise = value;
         noiseCount.set([value]);
         device.queue.writeBuffer(billboardUniformBuffer, 16, noiseCount);
+    });
+    gui.add(settings, 'angle', 0, 360)
+        .name('baseline angle')
+        .onChange(value => {
+        settings.angle = -value;
+    });
+    gui.add(settings, 'scaler', 0.8, 1.2)
+        .name('baseline multiplier')
+        .onChange(value => {
+        settings.scaler = -value;
+    });
+    gui.add(settings, 'seedCount', 0, 5 * 64)
+        .name('seedc count')
+        .onChange(value => {
+        settings.seedCount = value;
+        seedCount.set([value]);
+        device.queue.writeBuffer(billboardUniformBuffer, 20, seedCount);
     });
 
     const observer = new ResizeObserver(

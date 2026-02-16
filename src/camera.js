@@ -58,7 +58,7 @@ export class Camera {
         return mat4.lookAt(this.position, target, this.up);
     }
     
-    getProjectionMatrix(aspectRatio, near = 0.1, far = 1000.0) {
+    getProjectionMatrix(aspectRatio, near = 0.01, far = 1000.0) {
         return mat4.perspective(
             this.zoom * Math.PI / 180,
             aspectRatio,

@@ -8,6 +8,8 @@ struct Sphere {
 struct Scene {
     left_eye: vec4f,
     right_eye: vec4f,
+    rotated_left_eye: vec4f,
+    rotated_right_eye: vec4f,
     sphere_count: u32,
     spheres: array<Sphere>,
 }

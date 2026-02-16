@@ -2,6 +2,7 @@ struct Uniforms {
     resolution: vec2f,
     dimensions: vec2f,
     noiseCount: f32,
+    seedCount: f32,
 };
 
 struct MatrixUniforms {
