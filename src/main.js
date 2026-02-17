@@ -18,6 +18,10 @@ import { InputHandler } from './inputHandler.js';
 import { Billboard } from './billboardManager.js';
 import { Scene } from './sceneManager.js';
 
+import { CPUEpipolarBenchmark } from './utils/cpuGenerateEpipolars.js';
+import { BenchmarkLogger }      from './utils/benchmarkProfiler.js';
+import { CPUIntegrator } from './utils/cpuIntegrator.js';
+
 import GUI from 'https://muigui.org/dist/0.x/muigui.module.js';
 import {
   vec3,
@@ -37,7 +41,7 @@ async function main()
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
-    const numSpheres = 1000;
+    const numSpheres = 500;
 
     const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 0.8;
     const recWidth =  MONITOR_WIDTH; 
@@ -46,7 +50,7 @@ async function main()
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
     const settings = {
-        enableProfiling: false,
+        enableProfiling: true,
         logInterval: 60,
         noise: 0,
         angle: 0,
@@ -59,9 +63,14 @@ async function main()
         logInterval: settings.logInterval
     });
 
+    const cpuBench = new CPUEpipolarBenchmark();
+    const cpuIntegrator = new CPUIntegrator();
+    const logger   = new BenchmarkLogger();
+    window.logger  = logger; // access from browser console: logger.downloadCSV()
+
     const gui = new GUI();
 
-    const scene = new Scene(device, IPD, VIEWING_DISTANCE, SCENE_GAP, 10.0, numSpheres);
+    const scene = new Scene(device, IPD, VIEWING_DISTANCE, SCENE_GAP, 1.0, numSpheres);
 
     // world geometries
     const sphereGeometry = new Sphere(20);
@@ -143,8 +152,6 @@ async function main()
     size: 3 * 4, // 3 × u32
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
-
-
  
     const backgroundPlaneBuffer = device.createBuffer({
         label: 'background plane buffer',
@@ -335,6 +342,12 @@ async function main()
             physicsPass.setBindGroup(0, physicsBindGroup);
             physicsPass.dispatchWorkgroups(numSpheres); // One workgroup per sphere
             physicsPass.end();
+
+            logger.recordPhysics({
+                sphereCount: numSpheres,
+                gpuMs: profiler.stats.lastPhysicsMs,
+                cpuMs: cpuIntegrator.run(scene, 0.016, 6.674e-4),
+            });
             
         }
         profiler.writePhysicsEnd(encoder);
@@ -348,7 +361,7 @@ async function main()
         const computePass = encoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, computebindGroup);
-        computePass.dispatchWorkgroups(Math.ceil(4096 / 64));
+        computePass.dispatchWorkgroups(Math.ceil(4096 / 64), 2);
         computePass.end();
 
         profiler.writeComputeEnd(encoder);
@@ -370,6 +383,29 @@ async function main()
         device.queue.submit([commandBuffer]);
 
         await profiler.updateStats(deltaTime);
+
+        const cpuMs = cpuBench.run(
+            scene,
+            billboardTransform,
+            mat4.inverse(billboardTransform),
+            [MONITOR_WIDTH, MONITOR_HEIGHT],
+            {
+                normal: vec3.negate(camera.front),
+                origin: vec3.add(
+                    camera.position,
+                    vec3.mulScalar(camera.front, backgroundPlaneDistance)
+                ),
+            },
+            settings.seedCount
+        );
+
+        logger.record({
+            sphereCount: numSpheres,
+            seedCount:   settings.seedCount,
+            splatCount:  profiler.stats.splatCount,
+            gpuMs:       profiler.stats.lastComputeMs,
+            cpuMs,
+        });
 
         isRendering = false;
         requestAnimationFrame(render);
@@ -405,6 +441,8 @@ async function main()
         seedCount.set([value]);
         device.queue.writeBuffer(billboardUniformBuffer, 20, seedCount);
     });
+    gui.add({ dl: () => logger.downloadCSV() }, 'dl').name('download CSV');
+    gui.add({ dl: () => logger.downloadPhysicsCSV() }, 'dl').name('download physics CSV');
 
     const observer = new ResizeObserver(
         generateObserverCallback({ 

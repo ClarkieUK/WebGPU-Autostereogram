@@ -40,7 +40,8 @@ export class Scene {
 
         let x = (Math.random() - 0.5) * 2 * scale;
         let y = (Math.random() - 0.5) * 2 * scale;
-        let z = -Math.random() * sceneGap * scale;
+        //let z = -Math.random() * sceneGap * scale;
+        let z = -Math.random() * sceneGap * scale - 2;
 
         let r =  (Math.random() * 0.25);
 

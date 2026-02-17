@@ -107,6 +107,7 @@ export class Profiler {
         
         const timingResults = await this.gpuProfiler.getResults();
         
+        
         if (timingResults.length >= 3) {
             const physicsTime = timingResults[0].durationMs;  // timestamps 0-1
             const computeTime = timingResults[1].durationMs;  // timestamps 2-3
@@ -118,6 +119,9 @@ export class Profiler {
             this.stats.computeTimeMs += computeTime;
             this.stats.renderTimeMs += renderTime;
             this.stats.totalTimeMs += totalTime;
+            
+            this.stats.lastPhysicsMs = physicsTime;
+            this.stats.lastComputeMs = computeTime; 
             
             this.stats.avgPhysicsMs = this.stats.physicsTimeMs / this.stats.frameCount;
             this.stats.avgComputeMs = this.stats.computeTimeMs / this.stats.frameCount;

@@ -106,9 +106,9 @@ fn dormand_prince8(this_body: u32, tid: u32, dt: f32, r0: vec3f, v0: vec3f) -> R
     let drs6 = v6 * dt;
     let dvs6 = compute_total_accel(this_body, tid, r6) * dt;
     
-    let drs5_order = (35.0/384.0) * drs1 + (500.0/1113.0) * drs3 + 
+    let drs5_order = (35.0/384.0) * drs1 + (500.0/1113.0) * drs3 - 
                      (125.0/192.0) * drs4 + (-2187.0/6784.0) * drs5 + (11.0/84.0) * drs6;
-    let dvs5_order = (35.0/384.0) * dvs1 + (500.0/1113.0) * dvs3 + 
+    let dvs5_order = (35.0/384.0) * dvs1 + (500.0/1113.0) * dvs3 - 
                      (125.0/192.0) * dvs4 + (-2187.0/6784.0) * dvs5 + (11.0/84.0) * dvs6;
     
     var result: RKResult;

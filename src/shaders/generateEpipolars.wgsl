@@ -273,8 +273,11 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     write_splat(seed_uv, seed_id);
     write_splat(right_uv, seed_id);
     
-    chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz); // from right to left
-    chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
+    if (id.y == 0u) {
+    chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz);
+    } else {
+        chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
+    }
 }
 /*
 @compute @workgroup_size(64) 
