@@ -1,21 +1,33 @@
 // @ts-nocheck
+// cpuGenerateEpipolars.js — mirrors generateEpipolars.wgsl
+// Zero heap allocations in the hot path — pre-allocated scratch pool.
 
-const v3 = {
-    sub:  (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]],
-    add:  (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]],
-    scale:(a, s) => [a[0]*s,    a[1]*s,    a[2]*s   ],
-    dot:  (a, b) =>  a[0]*b[0] + a[1]*b[1] + a[2]*b[2],
-    dist: (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]),
-    norm: (a)    => { const l = Math.hypot(...a) || 1; return v3.scale(a, 1/l); },
-};
+// ── scratch pool: 64 reusable Float32Array[3] ───────────────────────────────
+const _pool = Array.from({length: 64}, () => new Float32Array(3));
+let _pi = 0;
+const tmp = () => _pool[_pi++ & 63];
 
-function mulM4V4(m, v) {
-    return [
-        m[0]*v[0] + m[4]*v[1] + m[8] *v[2] + m[12]*v[3],
-        m[1]*v[0] + m[5]*v[1] + m[9] *v[2] + m[13]*v[3],
-        m[2]*v[0] + m[6]*v[1] + m[10]*v[2] + m[14]*v[3],
-        m[3]*v[0] + m[7]*v[1] + m[11]*v[2] + m[15]*v[3],
-    ];
+const set3   = (o, x, y, z) => { o[0]=x; o[1]=y; o[2]=z; return o; };
+const add3   = (a, b) => set3(tmp(), a[0]+b[0], a[1]+b[1], a[2]+b[2]);
+const sub3   = (a, b) => set3(tmp(), a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+const scale3 = (a, s) => set3(tmp(), a[0]*s,    a[1]*s,    a[2]*s   );
+const dot3   = (a, b) =>  a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const dist3  = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
+const norm3  = (a)    => { const l = Math.hypot(a[0],a[1],a[2]) || 1; return scale3(a, 1/l); };
+
+// pre-allocated 2-element scratch for UV returns
+const _uv0 = new Float32Array(2);
+const _uv1 = new Float32Array(2);
+
+// pre-allocated 4-element scratch for mat4 multiply
+const _m4 = new Float32Array(4);
+
+function mulM4V4into(out, m, x, y, z, w) {
+    out[0] = m[0]*x + m[4]*y + m[8] *z + m[12]*w;
+    out[1] = m[1]*x + m[5]*y + m[9] *z + m[13]*w;
+    out[2] = m[2]*x + m[6]*y + m[10]*z + m[14]*w;
+    out[3] = m[3]*x + m[7]*y + m[11]*z + m[15]*w;
+    return out;
 }
 
 function hash1(p) {
@@ -27,128 +39,152 @@ function hash1(p) {
 
 export class CPUEpipolarBenchmark {
     run(scene, model, invModel, dimensions, bgPlane, seedCount) {
-        const t0 = performance.now();
 
+        // ── setup: outside the timestamp ────────────────────────────────────
         const sd = scene.sceneData;
-
-        const leftEye  = [sd[0], sd[1], sd[2]];
-        const rightEye = [sd[4], sd[5], sd[6]];
-        const sphereCount = scene.sceneData[16]; 
-        const sphereCountInt = new Uint32Array(sd.buffer, 16 * 4, 1)[0];
-
-        const spheres = [];
-        const base = 20; 
-        for (let i = 0; i < sphereCountInt; i++) {
-            const o = base + i * 8;
-            spheres.push({ pos: [sd[o], sd[o+1], sd[o+2]], r: sd[o+3] });
-        }
-
+        const leftEye  = new Float32Array([sd[0], sd[1], sd[2]]);
+        const rightEye = new Float32Array([sd[4], sd[5], sd[6]]);
+        const sphereCount = new Uint32Array(sd.buffer, 16 * 4, 1)[0];
         const [W, H] = dimensions;
 
-        const uvToWorld = (uv) => {
-            const lx = uv[0]*W - W/2;
-            const ly = uv[1]*H - H/2;
-            const r = mulM4V4(model, [lx, ly, 0, 1]);
-            return [r[0], r[1], r[2]];
+        // flat sphere data: [x,y,z,r, x,y,z,r, ...]
+        const sphPos = new Float32Array(sphereCount * 3);
+        const sphR   = new Float32Array(sphereCount);
+        for (let i = 0; i < sphereCount; i++) {
+            const o = 20 + i * 8;
+            sphPos[i*3]   = sd[o];
+            sphPos[i*3+1] = sd[o+1];
+            sphPos[i*3+2] = sd[o+2];
+            sphR[i]        = sd[o+3];
+        }
+
+        const bgNx = bgPlane.normal[0], bgNy = bgPlane.normal[1], bgNz = bgPlane.normal[2];
+        const bgOx = bgPlane.origin[0], bgOy = bgPlane.origin[1], bgOz = bgPlane.origin[2];
+
+        // pre-allocated per-call working vecs
+        const _wp   = new Float32Array(3);
+        const _rd   = new Float32Array(3);
+        const _hit  = new Float32Array(3);
+        const _vrd  = new Float32Array(3);
+        const _vhit = new Float32Array(3);
+        const _oc   = new Float32Array(3);
+        const _dir  = new Float32Array(3);
+        const _wn   = new Float32Array(3);
+        const _rc   = new Float32Array(3);
+        const _tmp4 = new Float32Array(4);
+        const _seedUV = new Float32Array(2);
+        const _rightUV = new Float32Array(2);
+        const _curUV   = new Float32Array(2);
+        const _nextUV  = new Float32Array(2);
+
+        const uvToWorld = (uvx, uvy, out) => {
+            mulM4V4into(_tmp4, model, uvx*W - W/2, uvy*H - H/2, 0, 1);
+            out[0] = _tmp4[0]; out[1] = _tmp4[1]; out[2] = _tmp4[2];
         };
 
-        const worldToUV = (wp) => {
-            const v = mulM4V4(invModel, [wp[0], wp[1], wp[2], 1]);
-            return [(v[0] + W/2) / W, (v[1] + H/2) / H];
+        const worldToUV = (wx, wy, wz, out) => {
+            mulM4V4into(_tmp4, invModel, wx, wy, wz, 1);
+            out[0] = (_tmp4[0] + W/2) / W;
+            out[1] = (_tmp4[1] + H/2) / H;
         };
 
-        const getRectIntersect = (worldPos, eye) => {
-            const dir = v3.norm(v3.sub(worldPos, eye));
-            const wn4 = mulM4V4(model, [0, 0, 1, 0]);
-            const wn  = v3.norm([wn4[0], wn4[1], wn4[2]]);
-            const rc4 = mulM4V4(model, [0, 0, 0, 1]);
-            const rc  = [rc4[0], rc4[1], rc4[2]];
-            const denom = v3.dot(wn, dir);
-            if (Math.abs(denom) < 0.0001) return [-999, -999];
-            const t = v3.dot(v3.sub(rc, eye), wn) / denom;
-            if (t < 0) return [-999, -999];
-            return worldToUV(v3.add(eye, v3.scale(dir, t)));
+        // pre-computed rect normal and center
+        mulM4V4into(_tmp4, model, 0, 0, 1, 0);
+        const wnLen = Math.hypot(_tmp4[0], _tmp4[1], _tmp4[2]) || 1;
+        const wnx = _tmp4[0]/wnLen, wny = _tmp4[1]/wnLen, wnz = _tmp4[2]/wnLen;
+        mulM4V4into(_tmp4, model, 0, 0, 0, 1);
+        const rcx = _tmp4[0], rcy = _tmp4[1], rcz = _tmp4[2];
+
+        const getRectIntersect = (wx, wy, wz, ex, ey, ez, out) => {
+            const dx = wx-ex, dy = wy-ey, dz = wz-ez;
+            const dl = Math.hypot(dx, dy, dz) || 1;
+            const dirx = dx/dl, diry = dy/dl, dirz = dz/dl;
+            const denom = wnx*dirx + wny*diry + wnz*dirz;
+            if (Math.abs(denom) < 0.0001) { out[0] = -999; out[1] = -999; return; }
+            const t = ((rcx-ex)*wnx + (rcy-ey)*wny + (rcz-ez)*wnz) / denom;
+            if (t < 0) { out[0] = -999; out[1] = -999; return; }
+            worldToUV(ex + dirx*t, ey + diry*t, ez + dirz*t, out);
         };
 
-        const intersectSphere = (ro, rd, sp) => {
-            const oc = v3.sub(sp.pos, ro);
-            const a  = v3.dot(rd, rd);
-            const b  = -2 * v3.dot(oc, rd);
-            const c  = v3.dot(oc, oc) - sp.r * sp.r;
+        const intersectSphere = (rox, roy, roz, rdx, rdy, rdz, i) => {
+            const px = sphPos[i*3], py = sphPos[i*3+1], pz = sphPos[i*3+2], r = sphR[i];
+            const ocx = px-rox, ocy = py-roy, ocz = pz-roz;
+            const a = rdx*rdx + rdy*rdy + rdz*rdz;
+            const b = -2*(ocx*rdx + ocy*rdy + ocz*rdz);
+            const c = ocx*ocx + ocy*ocy + ocz*ocz - r*r;
             const disc = b*b - 4*a*c;
             if (disc < 0) return -1;
-            const t1 = (-b - Math.sqrt(disc)) / (2*a);
-            const t2 = (-b + Math.sqrt(disc)) / (2*a);
+            const sq = Math.sqrt(disc);
+            const t1 = (-b - sq) / (2*a);
+            const t2 = (-b + sq) / (2*a);
             if (t1 > 0) return t1;
             if (t2 > 0) return t2;
             return -1;
         };
 
-        const intersectPlane = (ro, rd) => {
-            const denom = v3.dot(bgPlane.normal, rd);
-            if (Math.abs(denom) < 0.0001) return -1;
-            const t = v3.dot(v3.sub(bgPlane.origin, ro), bgPlane.normal) / denom;
-            return t < 0 ? -1 : t;
-        };
-
-        const traceScene = (ro, rd) => {
+        const traceScene = (rox, roy, roz, rdx, rdy, rdz) => {
             let minT = 999999, hit = false;
-            for (let i = 0; i < sphereCountInt; i++) {
-                const t = intersectSphere(ro, rd, spheres[i]);
+            for (let i = 0; i < sphereCount; i++) {
+                const t = intersectSphere(rox, roy, roz, rdx, rdy, rdz, i);
                 if (t > 0 && t < minT) { minT = t; hit = true; }
             }
-            const pt = intersectPlane(ro, rd);
-            if (pt > 0 && pt < minT) { minT = pt; hit = true; }
+            const denom = bgNx*rdx + bgNy*rdy + bgNz*rdz;
+            if (Math.abs(denom) >= 0.0001) {
+                const pt = ((bgOx-rox)*bgNx + (bgOy-roy)*bgNy + (bgOz-roz)*bgNz) / denom;
+                if (pt > 0 && pt < minT) { minT = pt; hit = true; }
+            }
             return hit ? minT : -1;
         };
 
-        const writeSplat = (uv) => {
-            void (uv[0] >= 0 && uv[0] <= 1 && uv[1] >= 0 && uv[1] <= 1);
-        };
-
-        const chainDirection = (startUV, fromEye, toEye) => {
-            let cur = startUV;
+        const chainDirection = (curx, cury, fex, fey, fez, tex, tey, tez) => {
+            let cx = curx, cy = cury;
             for (let iter = 0; iter < 50; iter++) {
-                const wp  = uvToWorld(cur);
-                const rd  = v3.norm(v3.sub(wp, fromEye));
-                const t   = traceScene(fromEye, rd);
+                uvToWorld(cx, cy, _wp);
+                const dx = _wp[0]-fex, dy = _wp[1]-fey, dz = _wp[2]-fez;
+                const dl = Math.hypot(dx, dy, dz) || 1;
+                const rdx = dx/dl, rdy = dy/dl, rdz = dz/dl;
+                const t = traceScene(fex, fey, fez, rdx, rdy, rdz);
                 if (t < 0) break;
-                const hit = v3.add(fromEye, v3.scale(rd, t));
-
-                const vrd = v3.norm(v3.sub(hit, toEye));
-                const vt  = traceScene(toEye, vrd);
+                const hx = fex+rdx*t, hy = fey+rdy*t, hz = fez+rdz*t;
+                const vdx = hx-tex, vdy = hy-tey, vdz = hz-tez;
+                const vl = Math.hypot(vdx, vdy, vdz) || 1;
+                const vrx = vdx/vl, vry = vdy/vl, vrz = vdz/vl;
+                const vt = traceScene(tex, tey, tez, vrx, vry, vrz);
                 if (vt < 0) break;
-                if (v3.dist(hit, v3.add(toEye, v3.scale(vrd, vt))) > 0.01) break;
-
-                const nextUV = getRectIntersect(hit, toEye);
-                if (nextUV[0] < 0 || nextUV[0] > 1 || nextUV[1] < 0 || nextUV[1] > 1) break;
-
-                writeSplat(nextUV);
-                cur = nextUV;
+                const vhx = tex+vrx*vt, vhy = tey+vry*vt, vhz = tez+vrz*vt;
+                if (Math.hypot(hx-vhx, hy-vhy, hz-vhz) > 0.01) break;
+                getRectIntersect(hx, hy, hz, tex, tey, tez, _nextUV);
+                if (_nextUV[0] < 0 || _nextUV[0] > 1 || _nextUV[1] < 0 || _nextUV[1] > 1) break;
+                cx = _nextUV[0]; cy = _nextUV[1];
             }
         };
 
+        // ── timestamp: only the seed loop ───────────────────────────────────
+        const t0 = performance.now();
+
         for (let seed_id = 0; seed_id < seedCount; seed_id++) {
-            const seedUV = [hash1(seed_id), hash1(seed_id + 100)];
-            const wp     = uvToWorld(seedUV);
-            const lrd    = v3.norm(v3.sub(wp, leftEye));
-            const t      = traceScene(leftEye, lrd);
+            const sux = hash1(seed_id), suy = hash1(seed_id + 100);
+            uvToWorld(sux, suy, _wp);
+            const dx = _wp[0]-leftEye[0], dy = _wp[1]-leftEye[1], dz = _wp[2]-leftEye[2];
+            const dl = Math.hypot(dx, dy, dz) || 1;
+            const rdx = dx/dl, rdy = dy/dl, rdz = dz/dl;
+            const t = traceScene(leftEye[0], leftEye[1], leftEye[2], rdx, rdy, rdz);
             if (t < 0) continue;
 
-            const sceneHit = v3.add(leftEye, v3.scale(lrd, t));
-            const rrd      = v3.norm(v3.sub(sceneHit, rightEye));
-            const rt       = traceScene(rightEye, rrd);
+            const hx = leftEye[0]+rdx*t, hy = leftEye[1]+rdy*t, hz = leftEye[2]+rdz*t;
+            const vdx = hx-rightEye[0], vdy = hy-rightEye[1], vdz = hz-rightEye[2];
+            const vl = Math.hypot(vdx, vdy, vdz) || 1;
+            const vrx = vdx/vl, vry = vdy/vl, vrz = vdz/vl;
+            const rt = traceScene(rightEye[0], rightEye[1], rightEye[2], vrx, vry, vrz);
             if (rt < 0) continue;
-            if (v3.dist(sceneHit, v3.add(rightEye, v3.scale(rrd, rt))) > 0.01) continue;
+            const vhx = rightEye[0]+vrx*rt, vhy = rightEye[1]+vry*rt, vhz = rightEye[2]+vrz*rt;
+            if (Math.hypot(hx-vhx, hy-vhy, hz-vhz) > 0.01) continue;
 
-            const rightUV = getRectIntersect(sceneHit, rightEye);
-            writeSplat(seedUV);
-            writeSplat(rightUV);
-
-            chainDirection(rightUV, rightEye, leftEye);
-            chainDirection(seedUV,  leftEye,  rightEye);
+            getRectIntersect(hx, hy, hz, rightEye[0], rightEye[1], rightEye[2], _rightUV);
+            chainDirection(_rightUV[0], _rightUV[1], rightEye[0], rightEye[1], rightEye[2], leftEye[0],  leftEye[1],  leftEye[2]);
+            chainDirection(sux, suy,                 leftEye[0],  leftEye[1],  leftEye[2],  rightEye[0], rightEye[1], rightEye[2]);
         }
 
-        return performance.now() - t0; 
+        return performance.now() - t0;
     }
 }

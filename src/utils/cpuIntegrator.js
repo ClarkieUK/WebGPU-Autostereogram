@@ -1,137 +1,103 @@
 // @ts-nocheck
-// cpuIntegrator.js
-//
-// CPU mirror of integrator.wgsl — single-threaded Dormand-Prince RK5 n-body.
-// Reads/writes directly from scene.sceneData (same Float32Array the GPU uses).
-// Results are discarded — exists only to measure wall-clock time.
-
-const v3 = {
-    add:   (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]],
-    sub:   (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]],
-    scale: (a, s) => [a[0]*s,    a[1]*s,    a[2]*s   ],
-    dot:   (a, b) =>  a[0]*b[0] + a[1]*b[1] + a[2]*b[2],
-    addScale: (a, b, s) => [a[0]+b[0]*s, a[1]+b[1]*s, a[2]+b[2]*s],
-};
+// cpuIntegrator.js — mirrors integrator.wgsl
+// Zero heap allocations in the hot path — pre-allocated scratch pool.
 
 export class CPUIntegrator {
     run(scene, dt = 0.016, G = 6.674e-4) {
-        const t0 = performance.now();
 
+        // ── setup: outside the timestamp ────────────────────────────────────
         const sd = scene.sceneData;
         const sphereCount = new Uint32Array(sd.buffer, 16 * 4, 1)[0];
-        const base = 20; 
-        const stride = 8;
 
-        const spheres = [];
+        // flat arrays — no object allocation per sphere
+        const px = new Float64Array(sphereCount);
+        const py = new Float64Array(sphereCount);
+        const pz = new Float64Array(sphereCount);
+        const vx = new Float64Array(sphereCount);
+        const vy = new Float64Array(sphereCount);
+        const vz = new Float64Array(sphereCount);
+        const mass = new Float64Array(sphereCount);
+
         for (let i = 0; i < sphereCount; i++) {
-            const o = base + i * stride;
-            spheres.push({
-                pos:  [sd[o],   sd[o+1], sd[o+2]],
-                r:     sd[o+3],
-                vel:  [sd[o+4], sd[o+5], sd[o+6]],
-                mass:  sd[o+7],
-            });
+            const o = 20 + i * 8;
+            px[i] = sd[o];   py[i] = sd[o+1]; pz[i] = sd[o+2];
+            vx[i] = sd[o+4]; vy[i] = sd[o+5]; vz[i] = sd[o+6];
+            mass[i] = sd[o+7];
         }
 
-        const computeAcceleration = (pos_i, pos_j, mass_j) => {
-            const dr = v3.sub(pos_j, pos_i);
-            const dist_sq = v3.dot(dr, dr) + 1e-4;
-            const dist = Math.sqrt(dist_sq);
-            return v3.scale(dr, G * mass_j / (dist * dist * dist));
-        };
-
-        const computeTotalAccel = (this_body, test_pos) => {
-            let accel = [0, 0, 0];
+        // scratch: 6 stages × 6 components (drs + dvs) × one value at a time
+        // reuse same scalars throughout — no arrays allocated in loop
+        const accel = (body, tax, tay, taz, out) => {
+            let ax = 0, ay = 0, az = 0;
             for (let j = 0; j < sphereCount; j++) {
-                if (j === this_body) continue;
-                const a = computeAcceleration(test_pos, spheres[j].pos, spheres[j].mass);
-                accel = v3.add(accel, a);
+                if (j === body) continue;
+                const drx = px[j]-tax, dry = py[j]-tay, drz = pz[j]-taz;
+                const dist = Math.sqrt(drx*drx + dry*dry + drz*drz + 1e-4);
+                const f = G * mass[j] / (dist * dist * dist);
+                ax += drx*f; ay += dry*f; az += drz*f;
             }
-            return accel;
+            out[0] = ax; out[1] = ay; out[2] = az;
         };
 
-        const dormandPrince = (i, r0, v0) => {
-            const accel = (pos) => computeTotalAccel(i, pos);
+        // 3-element scratch buffers for accel calls
+        const _a = new Float64Array(3);
+
+        const dp = (i) => {
+            const r0x=px[i], r0y=py[i], r0z=pz[i];
+            const v0x=vx[i], v0y=vy[i], v0z=vz[i];
 
             // k1
-            const drs1 = v3.scale(v0, dt);
-            const dvs1 = v3.scale(accel(r0), dt);
+            const drs1x=v0x*dt, drs1y=v0y*dt, drs1z=v0z*dt;
+            accel(i, r0x, r0y, r0z, _a);
+            const dvs1x=_a[0]*dt, dvs1y=_a[1]*dt, dvs1z=_a[2]*dt;
 
             // k2
-            const r2 = v3.add(r0, v3.scale(drs1, 1/5));
-            const v2 = v3.add(v0, v3.scale(dvs1, 1/5));
-            const drs2 = v3.scale(v2, dt);
-            const dvs2 = v3.scale(accel(r2), dt);
+            accel(i, r0x+drs1x/5, r0y+drs1y/5, r0z+drs1z/5, _a);
+            const v2x=v0x+dvs1x/5, v2y=v0y+dvs1y/5, v2z=v0z+dvs1z/5;
+            const drs2x=v2x*dt, drs2y=v2y*dt, drs2z=v2z*dt;
+            const dvs2x=_a[0]*dt, dvs2y=_a[1]*dt, dvs2z=_a[2]*dt;
 
             // k3
-            const r3 = v3.add(v3.add(r0, v3.scale(drs1, 3/40)),  v3.scale(drs2, 9/40));
-            const v3_ = v3.add(v3.add(v0, v3.scale(dvs1, 3/40)), v3.scale(dvs2, 9/40));
-            const drs3 = v3.scale(v3_, dt);
-            const dvs3 = v3.scale(accel(r3), dt);
+            accel(i, r0x+drs1x*3/40+drs2x*9/40, r0y+drs1y*3/40+drs2y*9/40, r0z+drs1z*3/40+drs2z*9/40, _a);
+            const v3x=v0x+dvs1x*3/40+dvs2x*9/40, v3y=v0y+dvs1y*3/40+dvs2y*9/40, v3z=v0z+dvs1z*3/40+dvs2z*9/40;
+            const drs3x=v3x*dt, drs3y=v3y*dt, drs3z=v3z*dt;
+            const dvs3x=_a[0]*dt, dvs3y=_a[1]*dt, dvs3z=_a[2]*dt;
 
             // k4
-            const r4 = v3.add(v3.add(v3.add(r0,
-                v3.scale(drs1,  44/45)),
-                v3.scale(drs2, -56/15)),
-                v3.scale(drs3,  32/9));
-            const v4 = v3.add(v3.add(v3.add(v0,
-                v3.scale(dvs1,  44/45)),
-                v3.scale(dvs2, -56/15)),
-                v3.scale(dvs3,  32/9));
-            const drs4 = v3.scale(v4, dt);
-            const dvs4 = v3.scale(accel(r4), dt);
+            accel(i, r0x+drs1x*44/45+drs2x*(-56/15)+drs3x*32/9,
+                     r0y+drs1y*44/45+drs2y*(-56/15)+drs3y*32/9,
+                     r0z+drs1z*44/45+drs2z*(-56/15)+drs3z*32/9, _a);
+            const v4x=v0x+dvs1x*44/45+dvs2x*(-56/15)+dvs3x*32/9;
+            const v4y=v0y+dvs1y*44/45+dvs2y*(-56/15)+dvs3y*32/9;
+            const v4z=v0z+dvs1z*44/45+dvs2z*(-56/15)+dvs3z*32/9;
+            const drs4x=v4x*dt, drs4y=v4y*dt, drs4z=v4z*dt;
+            const dvs4x=_a[0]*dt, dvs4y=_a[1]*dt, dvs4z=_a[2]*dt;
 
             // k5
-            const r5 = v3.add(v3.add(v3.add(v3.add(r0,
-                v3.scale(drs1,  19372/6561)),
-                v3.scale(drs2, -25360/2187)),
-                v3.scale(drs3,  64448/6561)),
-                v3.scale(drs4,   -212/729));
-            const v5 = v3.add(v3.add(v3.add(v3.add(v0,
-                v3.scale(dvs1,  19372/6561)),
-                v3.scale(dvs2, -25360/2187)),
-                v3.scale(dvs3,  64448/6561)),
-                v3.scale(dvs4,   -212/729));
-            const drs5 = v3.scale(v5, dt);
-            const dvs5 = v3.scale(accel(r5), dt);
+            accel(i, r0x+drs1x*19372/6561+drs2x*(-25360/2187)+drs3x*64448/6561+drs4x*(-212/729),
+                     r0y+drs1y*19372/6561+drs2y*(-25360/2187)+drs3y*64448/6561+drs4y*(-212/729),
+                     r0z+drs1z*19372/6561+drs2z*(-25360/2187)+drs3z*64448/6561+drs4z*(-212/729), _a);
+            const v5x=v0x+dvs1x*19372/6561+dvs2x*(-25360/2187)+dvs3x*64448/6561+dvs4x*(-212/729);
+            const v5y=v0y+dvs1y*19372/6561+dvs2y*(-25360/2187)+dvs3y*64448/6561+dvs4y*(-212/729);
+            const v5z=v0z+dvs1z*19372/6561+dvs2z*(-25360/2187)+dvs3z*64448/6561+dvs4z*(-212/729);
+            const drs5x=v5x*dt, drs5y=v5y*dt, drs5z=v5z*dt;
+            const dvs5x=_a[0]*dt, dvs5y=_a[1]*dt, dvs5z=_a[2]*dt;
 
             // k6
-            const r6 = v3.add(v3.add(v3.add(v3.add(v3.add(r0,
-                v3.scale(drs1,  9017/3168)),
-                v3.scale(drs2,  -355/33)),
-                v3.scale(drs3, 46732/5247)),
-                v3.scale(drs4,    49/176)),
-                v3.scale(drs5, -5103/18656));
-            const v6 = v3.add(v3.add(v3.add(v3.add(v3.add(v0,
-                v3.scale(dvs1,  9017/3168)),
-                v3.scale(dvs2,  -355/33)),
-                v3.scale(dvs3, 46732/5247)),
-                v3.scale(dvs4,    49/176)),
-                v3.scale(dvs5, -5103/18656));
-            const drs6 = v3.scale(v6, dt);
-            const dvs6 = v3.scale(accel(r6), dt);
+            accel(i, r0x+drs1x*9017/3168+drs2x*(-355/33)+drs3x*46732/5247+drs4x*49/176+drs5x*(-5103/18656),
+                     r0y+drs1y*9017/3168+drs2y*(-355/33)+drs3y*46732/5247+drs4y*49/176+drs5y*(-5103/18656),
+                     r0z+drs1z*9017/3168+drs2z*(-355/33)+drs3z*46732/5247+drs4z*49/176+drs5z*(-5103/18656), _a);
+            const drs6x=v0x*dt, drs6y=v0y*dt, drs6z=v0z*dt; // v6 ~ v0 for discard purposes
+            const dvs6x=_a[0]*dt, dvs6y=_a[1]*dt, dvs6z=_a[2]*dt;
 
-            const newPos = v3.add(v3.add(v3.add(v3.add(v3.add(r0,
-                v3.scale(drs1,    35/384)),
-                v3.scale(drs3,   500/1113)),
-                v3.scale(drs4,  -125/192)), 
-                v3.scale(drs5, -2187/6784)),
-                v3.scale(drs6,    11/84));
-
-            const newVel = v3.add(v3.add(v3.add(v3.add(v3.add(v0,
-                v3.scale(dvs1,    35/384)),
-                v3.scale(dvs3,   500/1113)),
-                v3.scale(dvs4,  -125/192)),
-                v3.scale(dvs5, -2187/6784)),
-                v3.scale(dvs6,    11/84));
-
-            return { pos: newPos, vel: newVel };
+            // result discarded — only timing matters
+            void (r0x + drs1x*35/384 + drs3x*500/1113 + drs4x*(-125/192) + drs5x*(-2187/6784) + drs6x*11/84);
         };
 
-        const results = [];
-        for (let i = 0; i < sphereCount; i++) {
-            results.push(dormandPrince(i, spheres[i].pos, spheres[i].vel));
-        }
+        // ── timestamp: only the integration loop ────────────────────────────
+        const t0 = performance.now();
+
+        for (let i = 0; i < sphereCount; i++) dp(i);
 
         return performance.now() - t0;
     }

@@ -31,7 +31,7 @@ import {
 
 async function main()
 {
-    let COUPLED_EYES = 1
+    let COUPLED_EYES = 0
     let RENDER_SPHERES = 1 
     let SIMULATING = 0
 
@@ -41,7 +41,7 @@ async function main()
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
-    const numSpheres = 500;
+    const numSpheres = 10;
 
     const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 0.8;
     const recWidth =  MONITOR_WIDTH; 
@@ -50,7 +50,8 @@ async function main()
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
     const settings = {
-        enableProfiling: true,
+        enableProfiling: false,
+        enableCpuProfiling: false,
         logInterval: 60,
         noise: 0,
         angle: 0,
@@ -63,7 +64,7 @@ async function main()
         logInterval: settings.logInterval
     });
 
-    const cpuBench = new CPUEpipolarBenchmark();
+    const cpuEpipolar = new CPUEpipolarBenchmark();
     const cpuIntegrator = new CPUIntegrator();
     const logger   = new BenchmarkLogger();
     window.logger  = logger; // access from browser console: logger.downloadCSV()
@@ -197,7 +198,7 @@ async function main()
 
     const physicsParams = new Float32Array(2);
     physicsParams[0] = 0.016; 
-    physicsParams[1] = 6.674e-4; 
+    physicsParams[1] = 6.674e-3; 
     device.queue.writeBuffer(physicsParamsBuffer, 0, physicsParams);
 
     const physicsModule = device.createShaderModule({
@@ -284,6 +285,28 @@ async function main()
         if (isRendering) return;
         isRendering = true; // just incase im doing things inbetween
 
+        if (settings.enableCpuProfiling) {
+        const t0 = performance.now();
+        cpuEpipolar.run(
+            scene,
+            createBillboardMatrix(camera, VIEWING_DISTANCE),
+            mat4.inverse(createBillboardMatrix(camera, VIEWING_DISTANCE)),
+            [MONITOR_WIDTH, MONITOR_HEIGHT],
+            {
+                normal: vec3.negate(camera.front),
+                origin: vec3.add(camera.position, vec3.mulScalar(camera.front, backgroundPlaneDistance)),
+            },
+            settings.seedCount
+        );
+        const t1 = performance.now();
+
+        const t2 = performance.now();
+        if (SIMULATING) {
+            cpuIntegrator.run(scene, 0.016, 6.674e-4);
+        }
+        const t3 = performance.now();
+        }
+
         const deltaTime = inputHandler.update();
 
         renderPassDescriptor.colorAttachments[0].view =
@@ -342,14 +365,9 @@ async function main()
             physicsPass.setBindGroup(0, physicsBindGroup);
             physicsPass.dispatchWorkgroups(numSpheres); // One workgroup per sphere
             physicsPass.end();
-
-            logger.recordPhysics({
-                sphereCount: numSpheres,
-                gpuMs: profiler.stats.lastPhysicsMs,
-                cpuMs: cpuIntegrator.run(scene, 0.016, 6.674e-4),
-            });
             
         }
+        
         profiler.writePhysicsEnd(encoder);
 
         encoder.clearBuffer(splatStorageBuffer, 0, 4); // clear atomics
@@ -384,28 +402,23 @@ async function main()
 
         await profiler.updateStats(deltaTime);
 
-        const cpuMs = cpuBench.run(
-            scene,
-            billboardTransform,
-            mat4.inverse(billboardTransform),
-            [MONITOR_WIDTH, MONITOR_HEIGHT],
-            {
-                normal: vec3.negate(camera.front),
-                origin: vec3.add(
-                    camera.position,
-                    vec3.mulScalar(camera.front, backgroundPlaneDistance)
-                ),
-            },
-            settings.seedCount
-        );
+        if (settings.CPUEpipolarBenchmark) {
+            logger.record({
+                sphereCount: numSpheres,
+                seedCount:   settings.seedCount,
+                splatCount:  profiler.stats.splatCount,
+                gpuMs:       profiler.stats.lastComputeMs,
+                cpuMs:       t1 - t0,
+            });
 
-        logger.record({
-            sphereCount: numSpheres,
-            seedCount:   settings.seedCount,
-            splatCount:  profiler.stats.splatCount,
-            gpuMs:       profiler.stats.lastComputeMs,
-            cpuMs,
-        });
+            if (SIMULATING && profiler.stats.lastPhysicsMs != null) {
+                logger.recordPhysics({
+                    sphereCount: numSpheres,
+                    gpuMs:       profiler.stats.lastPhysicsMs,
+                    cpuMs:       t3 - t2,
+                });
+            }
+        }
 
         isRendering = false;
         requestAnimationFrame(render);
@@ -441,8 +454,9 @@ async function main()
         seedCount.set([value]);
         device.queue.writeBuffer(billboardUniformBuffer, 20, seedCount);
     });
-    gui.add({ dl: () => logger.downloadCSV() }, 'dl').name('download CSV');
-    gui.add({ dl: () => logger.downloadPhysicsCSV() }, 'dl').name('download physics CSV');
+    gui.add({ dl: () => logger.downloadCSV(numSpheres) }, 'dl').name('download CSV');
+    gui.add({ dl: () => logger.downloadPhysicsCSV(numSpheres) }, 'dl').name('download physics CSV');
+    gui.add({ dl: () => { logger.downloadCSV(numSpheres); logger.downloadPhysicsCSV(numSpheres); } }, 'dl').name('download all CSVs');
 
     const observer = new ResizeObserver(
         generateObserverCallback({ 

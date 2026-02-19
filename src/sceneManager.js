@@ -45,7 +45,7 @@ export class Scene {
 
         let r =  (Math.random() * 0.25);
 
-        thisSphereData.set([x, y, z, r, 0.0, 0.0, 0.0, mass(r)])
+        thisSphereData.set([x, y, z, r, 0.0, 0.0, 0.0, r])
 
     }
 
