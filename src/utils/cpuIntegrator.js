@@ -1,15 +1,11 @@
 // @ts-nocheck
-// cpuIntegrator.js — mirrors integrator.wgsl
-// Zero heap allocations in the hot path — pre-allocated scratch pool.
 
 export class CPUIntegrator {
-    run(scene, dt = 0.016, G = 6.674e-4) {
+    run(scene, dt = 0.016, G = 6.674e-4) { // these values dont really matter, we are just psuedo computing here anyway
 
-        // ── setup: outside the timestamp ────────────────────────────────────
         const sd = scene.sceneData;
         const sphereCount = new Uint32Array(sd.buffer, 16 * 4, 1)[0];
 
-        // flat arrays — no object allocation per sphere
         const px = new Float64Array(sphereCount);
         const py = new Float64Array(sphereCount);
         const pz = new Float64Array(sphereCount);
@@ -25,8 +21,6 @@ export class CPUIntegrator {
             mass[i] = sd[o+7];
         }
 
-        // scratch: 6 stages × 6 components (drs + dvs) × one value at a time
-        // reuse same scalars throughout — no arrays allocated in loop
         const accel = (body, tax, tay, taz, out) => {
             let ax = 0, ay = 0, az = 0;
             for (let j = 0; j < sphereCount; j++) {
@@ -39,7 +33,6 @@ export class CPUIntegrator {
             out[0] = ax; out[1] = ay; out[2] = az;
         };
 
-        // 3-element scratch buffers for accel calls
         const _a = new Float64Array(3);
 
         const dp = (i) => {
@@ -87,14 +80,12 @@ export class CPUIntegrator {
             accel(i, r0x+drs1x*9017/3168+drs2x*(-355/33)+drs3x*46732/5247+drs4x*49/176+drs5x*(-5103/18656),
                      r0y+drs1y*9017/3168+drs2y*(-355/33)+drs3y*46732/5247+drs4y*49/176+drs5y*(-5103/18656),
                      r0z+drs1z*9017/3168+drs2z*(-355/33)+drs3z*46732/5247+drs4z*49/176+drs5z*(-5103/18656), _a);
-            const drs6x=v0x*dt, drs6y=v0y*dt, drs6z=v0z*dt; // v6 ~ v0 for discard purposes
+            const drs6x=v0x*dt, drs6y=v0y*dt, drs6z=v0z*dt; // 
             const dvs6x=_a[0]*dt, dvs6y=_a[1]*dt, dvs6z=_a[2]*dt;
 
-            // result discarded — only timing matters
             void (r0x + drs1x*35/384 + drs3x*500/1113 + drs4x*(-125/192) + drs5x*(-2187/6784) + drs6x*11/84);
         };
 
-        // ── timestamp: only the integration loop ────────────────────────────
         const t0 = performance.now();
 
         for (let i = 0; i < sphereCount; i++) dp(i);

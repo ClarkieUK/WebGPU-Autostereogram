@@ -1,8 +1,4 @@
 // @ts-nocheck
-// cpuGenerateEpipolars.js — mirrors generateEpipolars.wgsl
-// Zero heap allocations in the hot path — pre-allocated scratch pool.
-
-// ── scratch pool: 64 reusable Float32Array[3] ───────────────────────────────
 const _pool = Array.from({length: 64}, () => new Float32Array(3));
 let _pi = 0;
 const tmp = () => _pool[_pi++ & 63];
@@ -15,11 +11,9 @@ const dot3   = (a, b) =>  a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 const dist3  = (a, b) => Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]);
 const norm3  = (a)    => { const l = Math.hypot(a[0],a[1],a[2]) || 1; return scale3(a, 1/l); };
 
-// pre-allocated 2-element scratch for UV returns
 const _uv0 = new Float32Array(2);
 const _uv1 = new Float32Array(2);
 
-// pre-allocated 4-element scratch for mat4 multiply
 const _m4 = new Float32Array(4);
 
 function mulM4V4into(out, m, x, y, z, w) {
@@ -40,14 +34,12 @@ function hash1(p) {
 export class CPUEpipolarBenchmark {
     run(scene, model, invModel, dimensions, bgPlane, seedCount) {
 
-        // ── setup: outside the timestamp ────────────────────────────────────
         const sd = scene.sceneData;
         const leftEye  = new Float32Array([sd[0], sd[1], sd[2]]);
         const rightEye = new Float32Array([sd[4], sd[5], sd[6]]);
         const sphereCount = new Uint32Array(sd.buffer, 16 * 4, 1)[0];
         const [W, H] = dimensions;
 
-        // flat sphere data: [x,y,z,r, x,y,z,r, ...]
         const sphPos = new Float32Array(sphereCount * 3);
         const sphR   = new Float32Array(sphereCount);
         for (let i = 0; i < sphereCount; i++) {
@@ -61,7 +53,6 @@ export class CPUEpipolarBenchmark {
         const bgNx = bgPlane.normal[0], bgNy = bgPlane.normal[1], bgNz = bgPlane.normal[2];
         const bgOx = bgPlane.origin[0], bgOy = bgPlane.origin[1], bgOz = bgPlane.origin[2];
 
-        // pre-allocated per-call working vecs
         const _wp   = new Float32Array(3);
         const _rd   = new Float32Array(3);
         const _hit  = new Float32Array(3);
@@ -88,7 +79,6 @@ export class CPUEpipolarBenchmark {
             out[1] = (_tmp4[1] + H/2) / H;
         };
 
-        // pre-computed rect normal and center
         mulM4V4into(_tmp4, model, 0, 0, 1, 0);
         const wnLen = Math.hypot(_tmp4[0], _tmp4[1], _tmp4[2]) || 1;
         const wnx = _tmp4[0]/wnLen, wny = _tmp4[1]/wnLen, wnz = _tmp4[2]/wnLen;
@@ -159,7 +149,6 @@ export class CPUEpipolarBenchmark {
             }
         };
 
-        // ── timestamp: only the seed loop ───────────────────────────────────
         const t0 = performance.now();
 
         for (let seed_id = 0; seed_id < seedCount; seed_id++) {

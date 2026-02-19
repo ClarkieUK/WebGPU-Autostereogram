@@ -92,7 +92,7 @@ export class Profiler {
         if (!this.enabled) return;
         
         encoder.resolveQuerySet(
-            this.gpuProfiler.querySet, 0, 6,  // Changed from 4 to 6
+            this.gpuProfiler.querySet, 0, 6,  
             this.gpuProfiler.resolveBuffer, 0
         );
         encoder.copyBufferToBuffer(

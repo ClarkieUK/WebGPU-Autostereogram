@@ -10,26 +10,22 @@ export class GPUProfiler {
     }
 
     init() {
-        // query set for timestamps
         this.querySet = this.device.createQuerySet({
             type: 'timestamp',
             count: this.capacity * 2, // pairs of start/end
         });
 
-        // resolve queries into
         this.resolveBuffer = this.device.createBuffer({
             size: this.capacity * 2 * 8, // 8 bytes per timestamp
             usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
         });
 
-        // read results on CPU
         this.resultBuffer = this.device.createBuffer({
             size: this.capacity * 2 * 8,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         });
     }
 
-    // read timing results
     async getResults() {
         await this.resultBuffer.mapAsync(GPUMapMode.READ);
         const times = new BigInt64Array(this.resultBuffer.getMappedRange());
