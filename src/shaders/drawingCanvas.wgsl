@@ -3,6 +3,7 @@ struct Uniforms {
     dimensions: vec2f,
     noiseCount: f32,
     seedCount: f32,
+    referenceBaseline: f32,
 };
 
 struct MatrixUniforms {
@@ -58,8 +59,8 @@ struct ourVsOutput {
     let foo = matrixUniforms.projection * matrixUniforms.view * matrixUniforms.model * vec4f(vert.position, 0.0, 1.0);
 
     // Always project as if monitor is 0.6m * 0.35m
-    let clipX = worldPos.x / (0.6 / 2);  // (0.6 / 2.0)
-    let clipY = worldPos.y / (0.35 / 2); // (0.35 / 2.0)
+    let clipX = worldPos.x / (uniforms.resolution.x / 2);  // (0.6 / 2.0)
+    let clipY = worldPos.y / (uniforms.resolution.y / 2); // (0.35 / 2.0)
     
     var output: ourVsOutput;
     output.position = foo; //vec4f(clipX, clipY, 0.0, 1.0);
@@ -105,13 +106,13 @@ struct ourVsOutput {
     let seed_color = hash3(f32(closest_seed_id));
     
     // Edge detection: if two closest distances are similar, we're near an edge
-    let edge_threshold = 0.005;  // adjust for edge thickness
+    let edge_threshold = 0.002;  // adjust for edge thickness
     let edge_factor = smoothstep(0.0, edge_threshold, min_dist2 - min_dist1);
     
     // Darken edges
     let final_color = seed_color * edge_factor;
     
-    return vec4f(final_color*3, 1.0);
+    return vec4f(final_color*2, 1.0);
 }*/
 
 /* Classic dots with no culling */ /*
@@ -159,11 +160,6 @@ struct ourVsOutput {
     var color = vec4f(0.0);
     
     let num_splats = atomicLoad(&splats.count);
-
-    //let vertex_pos = vec2f(
-    //    fsInput.texCoord.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
-    //    fsInput.texCoord.y * uniforms.dimensions.y - uniforms.dimensions.y / 2.0
-    //);
 
     let vertex_pos = vec2f(
         fsInput.texCoord.x * uniforms.dimensions.x - uniforms.dimensions.x / 2.0,
@@ -221,7 +217,7 @@ struct ourVsOutput {
         if (dist_sq <= cutoff_distance_sq) {
             let weight = exp(-dist_sq / two_sigma_sq);
             let noise_color = hash3(noise_seed * 197.3 + 412.89);
-            color += vec4f(noise_color * weight, weight);
+            color += vec4f(noise_color * weight, 1.0);
         }
     }
     

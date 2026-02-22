@@ -31,17 +31,20 @@ import {
 
 async function main()
 {
-    let COUPLED_EYES = 0
+    let COUPLED_EYES = 1
     let RENDER_SPHERES = 1 
     let SIMULATING = 0
 
-    const MONITOR_WIDTH = 0.60 // m
-    const MONITOR_HEIGHT = 0.35 
+    const MONITOR_WIDTH = 0.60 // 0.60m
+    const MONITOR_HEIGHT = 0.35  // 0.35m
     const MONITOR_RESOLUTION = [1920,1080]
     const IPD = 0.065
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
-    const numSpheres = 10;
+    const numSpheres = 8;
+
+    let smoothedAngle = 0;
+    const SMOOTH = 0.05;
 
     const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 0.8;
     const recWidth =  MONITOR_WIDTH; 
@@ -57,6 +60,21 @@ async function main()
         angle: 0,
         scaler: 1,
         seedCount: 215,
+        referenceBaseline: false,
+        vrMode: false, 
+    };
+
+    const trackerWS = new WebSocket('ws://localhost:9002');
+    trackerWS.onmessage = (event) => {
+        const { address, args } = JSON.parse(event.data);
+        if (address === '/tracking/trackers/head/rotation' ||
+            address === '/tracking/trackers/2/rotation') {
+            if (settings.vrMode) {
+                const raw = -args[1];
+                smoothedAngle += (raw - smoothedAngle) * SMOOTH;
+                settings.angle = smoothedAngle;
+            }
+        }
     };
 
     const profiler = new Profiler(device, 
@@ -103,20 +121,22 @@ async function main()
     // uniforms
     const billboardUniformBuffer = device.createBuffer({
         label: 'uniforms',
-        size: 4 * 4 + 1 * 4 + 1 * 4,
+        size: 4 * 4 + 1 * 4 + 1 * 4 + 2 * 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    const billboardUniformBufferValues = new Float32Array(6);
+    const billboardUniformBufferValues = new Float32Array(7);
     const resolutionValue = billboardUniformBufferValues.subarray(0, 2);
     const rectangleDimensions = billboardUniformBufferValues.subarray(2, 4);
     const noiseCount = billboardUniformBufferValues.subarray(4,5);
     const seedCount = billboardUniformBufferValues.subarray(5,6);
+    const referenceBaseline = billboardUniformBufferValues.subarray(6,7);
 
     resolutionValue.set(MONITOR_RESOLUTION);
     rectangleDimensions.set([MONITOR_WIDTH, MONITOR_HEIGHT]); 
     noiseCount.set([settings.noise]);
     seedCount.set([settings.seedCount]);
+    referenceBaseline.set([settings.referenceBaseline ? 1.0 : 0.0]);
 
     device.queue.writeBuffer(billboardUniformBuffer, 0, billboardUniformBufferValues); 
 
@@ -281,30 +301,32 @@ async function main()
     const r = mat4.rotateZ(s, 0);    
     const origin_model_matrix = r;
 
+    let t0, t1, t2, t3
+
     async function render() {
         if (isRendering) return;
         isRendering = true; // just incase im doing things inbetween
 
         if (settings.enableCpuProfiling) {
-        const t0 = performance.now();
-        cpuEpipolar.run(
-            scene,
-            createBillboardMatrix(camera, VIEWING_DISTANCE),
-            mat4.inverse(createBillboardMatrix(camera, VIEWING_DISTANCE)),
-            [MONITOR_WIDTH, MONITOR_HEIGHT],
-            {
-                normal: vec3.negate(camera.front),
-                origin: vec3.add(camera.position, vec3.mulScalar(camera.front, backgroundPlaneDistance)),
-            },
-            settings.seedCount
-        );
-        const t1 = performance.now();
+            t0 = performance.now();
+                cpuEpipolar.run(
+                    scene,
+                    createBillboardMatrix(camera, VIEWING_DISTANCE),
+                    mat4.inverse(createBillboardMatrix(camera, VIEWING_DISTANCE)),
+                    [MONITOR_WIDTH, MONITOR_HEIGHT],
+                {
+                    normal: vec3.negate(camera.front),
+                    origin: vec3.add(camera.position, vec3.mulScalar(camera.front, backgroundPlaneDistance)),
+                },
+                settings.seedCount
+            );
+            t1 = performance.now();
 
-        const t2 = performance.now();
-        if (SIMULATING) {
-            cpuIntegrator.run(scene, 0.016, 6.674e-4);
-        }
-        const t3 = performance.now();
+            t2 = performance.now();
+            if (SIMULATING) {
+                cpuIntegrator.run(scene, 0.016, 6.674e-4);
+            }
+            t3 = performance.now();
         }
 
         const deltaTime = inputHandler.update();
@@ -379,7 +401,7 @@ async function main()
         const computePass = encoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, computebindGroup);
-        computePass.dispatchWorkgroups(Math.ceil(4096 / 64), 2);
+        computePass.dispatchWorkgroups(Math.ceil(settings.seedCount / 64), 4);
         computePass.end();
 
         profiler.writeComputeEnd(encoder);
@@ -402,7 +424,7 @@ async function main()
 
         await profiler.updateStats(deltaTime);
 
-        if (settings.CPUEpipolarBenchmark) {
+        if (settings.enableCpuProfiling) {
             logger.record({
                 sphereCount: numSpheres,
                 seedCount:   settings.seedCount,
@@ -448,12 +470,25 @@ async function main()
         settings.scaler = -value;
     });
     gui.add(settings, 'seedCount', 0, 5 * 64)
-        .name('seedc count')
+        .name('seed count')
         .onChange(value => {
         settings.seedCount = value;
         seedCount.set([value]);
         device.queue.writeBuffer(billboardUniformBuffer, 20, seedCount);
     });
+    gui.add(settings, 'referenceBaseline')
+        .name('draw reference baseline?')
+        .onChange(value => {
+            settings.referenceBaseline = value;
+            referenceBaseline.set([value ? 1.0 : 0.0]);
+            device.queue.writeBuffer(billboardUniformBuffer, 24, referenceBaseline);
+    });   
+    gui.add(settings, 'vrMode')
+        .name('enable vr mode')
+        .onChange(value => {
+            settings.vrMode = value;
+        });
+
     gui.add({ dl: () => logger.downloadCSV(numSpheres) }, 'dl').name('download CSV');
     gui.add({ dl: () => logger.downloadPhysicsCSV(numSpheres) }, 'dl').name('download physics CSV');
     gui.add({ dl: () => { logger.downloadCSV(numSpheres); logger.downloadPhysicsCSV(numSpheres); } }, 'dl').name('download all CSVs');

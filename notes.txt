@@ -33,3 +33,10 @@
 - Compute ID starts (0,0) top left, (W-1,H-1) bottom right
 
 - Canvas 2D typically has positive y moving downwards, for a (-1,1) top left clip space origin.
+
+// nearly done stuff to note 
+
+if you wanna use the vr functionality then youll have to setup the bridge in another terminal (node src/bridge.js)
+take the in and out ports inside the slime vr api/app and make sure the devices are on the same wifi network. Annoyingly this means configuring 
+the IMU firmware everytime you want to swap. It would also need certain wifi configurations (2.4ghz) and it cant be a crowded network, so maybe 
+do hardwiring for demo?
