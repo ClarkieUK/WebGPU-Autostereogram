@@ -38,15 +38,15 @@ async function main()
     const MONITOR_WIDTH = 0.60 // 0.60m
     const MONITOR_HEIGHT = 0.35  // 0.35m
     const MONITOR_RESOLUTION = [1920,1080]
-    const IPD = 0.065
+    const IPD = 0.062
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
-    const numSpheres = 8;
+    const numSpheres = 12;
 
     let smoothedAngle = 0;
     const SMOOTH = 0.05;
 
-    const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 0.8;
+    const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 2.0;
     const recWidth =  MONITOR_WIDTH; 
     const recHeight = MONITOR_HEIGHT;
 
@@ -59,7 +59,7 @@ async function main()
         noise: 0,
         angle: 0,
         scaler: 1,
-        seedCount: 215,
+        seedCount: 280,
         referenceBaseline: false,
         vrMode: false, 
     };
@@ -68,9 +68,10 @@ async function main()
     trackerWS.onmessage = (event) => {
         const { address, args } = JSON.parse(event.data);
         if (address === '/tracking/trackers/head/rotation' ||
-            address === '/tracking/trackers/2/rotation') {
+            address === '/tracking/trackers/2/rotation' ||
+            address === '/gyrosc/gyro') {
             if (settings.vrMode) {
-                const raw = -args[1];
+                const raw = args[1] * 180/Math.PI; // get args from either output on terminal or devdocs
                 smoothedAngle += (raw - smoothedAngle) * SMOOTH;
                 settings.angle = smoothedAngle;
             }

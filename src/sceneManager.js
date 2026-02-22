@@ -7,7 +7,7 @@ import {
 } from 'https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js';
 
 function mass(r) {
-    return 4/3 * Math.PI * r ** 3 * 500; // density of 0.1kg / m
+    return 4/3 * Math.PI * r ** 3 * 500; 
 }
 
 export class Scene {
@@ -34,20 +34,8 @@ export class Scene {
     this.rotatedLeftEyeData.set([0.0, 0.0, 0.0, 0.0]); // undefined until render loop calls...
     this.rotatedRightEyeData.set([0.0, 0.0, 0.0, 0.0]);
 
-    for (let i = 0; i < sphereCount; i++) {
-
-        const thisSphereData = this.sphereDataSpace.subarray(i * valuesPerSphere, (i+1) * valuesPerSphere)
-
-        let x = (Math.random() - 0.5) * 2 * scale;
-        let y = (Math.random() - 0.5) * 2 * scale;
-        //let z = -Math.random() * sceneGap * scale;
-        let z = -Math.random() * sceneGap * scale - 2;
-
-        let r =  (Math.random() * 0.25);
-
-        thisSphereData.set([x, y, z, r, 0.0, 0.0, 0.0, r])
-
-    }
+    //generateSpheres(this.sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap);
+    generatePosterExample(this.sphereDataSpace, valuesPerSphere);
 
     this.sceneBuffer = device.createBuffer({
         label: 'scene storage',
@@ -84,4 +72,38 @@ export class Scene {
     
     device.queue.writeBuffer(this.sceneBuffer, 0, this.sceneData.subarray(0, 16));
   }
-}
+};
+
+function generateSpheres(sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap) {
+    for (let i = 0; i < sphereCount; i++) {
+
+        const thisSphereData = sphereDataSpace.subarray(i * valuesPerSphere, (i+1) * valuesPerSphere)
+
+        let x = (Math.random() - 0.5) * 2 * scale;
+        let y = (Math.random() - 0.5) * 2 * scale;
+        //let z = -Math.random() * sceneGap * scale;
+        let z = -Math.random() * sceneGap * scale - 2;
+
+        let r =  (Math.random() * 0.25);
+
+        thisSphereData.set([x, y, z, r, 0.0, 0.0, 0.0, r])
+
+    }
+};
+
+function generatePosterExample(sphereDataSpace, valuesPerSphere) { 
+
+  for (let i = 0; i < 1; i++) {
+
+      const thisSphereData = sphereDataSpace.subarray(i * valuesPerSphere, (i+1) * valuesPerSphere)
+
+      let x = 0.0;
+      let y = 0.0;
+      let z = -1.0 * (i+1);
+
+      let r =  0.25;
+
+      thisSphereData.set([x, y, z, r, 0.0, 0.0, 0.0, r])
+  }
+};
+

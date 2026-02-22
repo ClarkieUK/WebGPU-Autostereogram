@@ -67,7 +67,7 @@ struct ourVsOutput {
     output.texCoord = vert.texCoord;
     return output;
 }
-/* fun tiliing */ 
+/* tiliing */ 
 /*
 @fragment fn fs(fsInput: ourVsOutput) -> @location(0) vec4f {
     let num_splats = atomicLoad(&splats.count);
@@ -105,14 +105,12 @@ struct ourVsOutput {
     
     let seed_color = hash3(f32(closest_seed_id));
     
-    // Edge detection: if two closest distances are similar, we're near an edge
     let edge_threshold = 0.002;  // adjust for edge thickness
     let edge_factor = smoothstep(0.0, edge_threshold, min_dist2 - min_dist1);
     
-    // Darken edges
     let final_color = seed_color * edge_factor;
     
-    return vec4f(final_color*2, 1.0);
+    return vec4f(final_color*1.2, 1.0);
 }*/
 
 /* Classic dots with no culling */ /*
@@ -141,7 +139,6 @@ struct ourVsOutput {
         );
         let splat_world_pos = (matrixUniforms.model * vec4f(splat_vertex_pos, 0.0, 1.0)).xyz;
         
-        // distance in world space
         let dist = distance(frag_world_pos, splat_world_pos);
         
         let weight = exp(-(dist * dist) / (2.0 * sigma * sigma));

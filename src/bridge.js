@@ -1,14 +1,14 @@
 import osc from 'osc';
 import { WebSocketServer } from 'ws';
 
-const PORT_IN = 9002;
-const PORT_OUT = 9000;
+const PORT_OUT = 9002; // in main will connect to :9002 ws
+const PORT_IN = 9000; // data received from phone set to port 9000 
 
-const wss = new WebSocketServer({ port: PORT_IN }); // PORT IN ON SLIMEVR 
+const wss = new WebSocketServer({ port: PORT_OUT }); 
 
 const udpPort = new osc.UDPPort({
     localAddress: '0.0.0.0',
-    localPort: PORT_OUT,  // PORT OUT MIGHT CHANGE ON LAPTOP <-------------------- ?????????
+    localPort: PORT_IN, 
 });
 
 udpPort.on('message', (msg) => {

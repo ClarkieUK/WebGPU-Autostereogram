@@ -24,6 +24,7 @@ async function initWebGPU(){
     context.configure({
         device,
         format: format,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     })
 
     return {device, canvas, context, format}

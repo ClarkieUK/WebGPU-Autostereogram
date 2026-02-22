@@ -1,4 +1,28 @@
 - modularise all code into software ish packaging, getting frustrating moving around the main file now...
 
 - somehow solve this fucking invariant rotation stereogram, I cant believe how hard this problem is to solve,
-perhapds impossible. gl to me in the future...
+perhaps impossible. gl to me in the future...
+
+
+
+
+
+
+- Images to create and save;
+
+    - Sandbox Overview
+    
+    - Geometry Diagram          (Done)
+    - 1 Epipolar Example        
+
+    - Full Example
+    - Full Voronoi Example 
+
+    - CPU Benchmarks
+    - GPU Benchmarks
+    - Maybe NSight Misses
+
+    - N-Body Star Formation
+    - SNR Before & After
+    - Rotation Correlation Issue
+    - Parrallelogram Geometry Subset

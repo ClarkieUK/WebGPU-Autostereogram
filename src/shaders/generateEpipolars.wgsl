@@ -188,7 +188,7 @@ fn trace_scene(ray: Ray) -> f32 {
 fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f) {
     var current_uv = start_uv;
     
-    for (var iter = 0u; iter < 40u; iter++) {
+    for (var iter = 0u; iter < 25u; iter++) {
         atomicAdd(&stats.chain_iterations, 1u);
         atomicAdd(&stats.total_rays, 2u); // 2 rays per iteration
         
@@ -326,8 +326,8 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
 
     let b_uv = get_rect_intersect(scene_hit, eye_b);
 
-    write_splat(seed_uv, seed_id);
-    write_splat(b_uv,    seed_id);
+    //write_splat(seed_uv, seed_id);
+    //write_splat(b_uv,    seed_id);
 
     // id.y even -> chain b->a : id.y odd -> chain a->b
     if ((id.y & 1u) == 0u) {
