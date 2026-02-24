@@ -33,7 +33,7 @@ async function main()
 {
     let COUPLED_EYES = 1
     let RENDER_SPHERES = 1 
-    let SIMULATING = 0
+    let SIMULATING = 1
 
     const MONITOR_WIDTH = 0.60 // 0.60m
     const MONITOR_HEIGHT = 0.35  // 0.35m
@@ -41,7 +41,7 @@ async function main()
     const IPD = 0.062
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 2; 
-    const numSpheres = 12;
+    const numSpheres = 1;
 
     let smoothedAngle = 0;
     const SMOOTH = 0.05;
@@ -53,8 +53,8 @@ async function main()
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
     const settings = {
-        enableProfiling: false,
-        enableCpuProfiling: false,
+        enableProfiling: true,
+        enableCpuProfiling: true,
         logInterval: 60,
         noise: 0,
         angle: 0,

@@ -99,9 +99,9 @@ function generatePosterExample(sphereDataSpace, valuesPerSphere) {
 
       let x = 0.0;
       let y = 0.0;
-      let z = -1.0 * (i+1);
+      let z = -1.5 * (i+1);
 
-      let r =  0.25;
+      let r =  0.32;
 
       thisSphereData.set([x, y, z, r, 0.0, 0.0, 0.0, r])
   }

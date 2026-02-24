@@ -221,7 +221,6 @@ struct ourVsOutput {
     return vec4f(color.rgb, 1.0);
 }
 
-
 fn hash1(p: f32) -> f32 {
     return fract(sin(p) * 43758.5453123);
 }

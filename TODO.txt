@@ -12,17 +12,17 @@ perhaps impossible. gl to me in the future...
 
     - Sandbox Overview
     
-    - Geometry Diagram          (Done)
-    - 1 Epipolar Example        
+    - Geometry Diagram                  (Done)
+    - 1 Epipolar Example                (Done)
 
-    - Full Example
-    - Full Voronoi Example 
+    - Full Example                      (Done)
+    - Full Voronoi Example              (Done)
 
-    - CPU Benchmarks
-    - GPU Benchmarks
-    - Maybe NSight Misses
+    - CPU Benchmarks                    (Done)
+    - GPU Benchmarks                    (Done)
+    - Maybe NSight Misses               - Get information not graph I guess
 
-    - N-Body Star Formation
-    - SNR Before & After
-    - Rotation Correlation Issue
-    - Parrallelogram Geometry Subset
+    - N-Body Star Formation     
+    - SNR Before & After                (Done)
+    - Rotation Correlation Issue        (Done)
+    - Parrallelogram Geometry Subset    

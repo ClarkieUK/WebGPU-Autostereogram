@@ -187,6 +187,8 @@ fn trace_scene(ray: Ray) -> f32 {
 
 fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f) {
     var current_uv = start_uv;
+
+    write_splat(current_uv, seed_id);
     
     for (var iter = 0u; iter < 25u; iter++) {
         atomicAdd(&stats.chain_iterations, 1u);
@@ -223,70 +225,11 @@ fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f
 @group(0) @binding(4) var<storage, read_write> stats: Stats;
 @group(0) @binding(5) var<uniform> backgroundPlane: BackgroundPlane;
 
-/* old binocular
-@compute @workgroup_size(64) 
-fn cs(@builtin(global_invocation_id) id: vec3u) {
-    let seed_id = id.x;
-    if (seed_id >= u32(uniforms.seedCount)) { return; }
-
-    let delta = 1 / f32(uniforms.seedCount);
-
-    var seed_uv = vec2f(
-        hash1(f32(seed_id+0)),
-        hash1(f32(seed_id+0) + 100.0)
-    );
-
-    // controlled sampling, introduces the occlusion problem tho
-    //seed_uv.y = delta * f32(id.x);
-    //seed_uv.y = delta * f32(id.x) + hash1(f32(seed_id) + 200.0) * delta * 0.5;
-    //seed_uv.x = 0.125;
-
-    
-    let world_pos = uv_to_world(seed_uv);
-    let left_ray = Ray(scene.left_eye.xyz, normalize(world_pos - scene.left_eye.xyz));
-    let t = trace_scene(left_ray);
-    
-    atomicAdd(&stats.total_rays, 1u); // count initial ray
-    
-    if (t < 0.0) { return; }
-    
-    atomicAdd(&stats.successful_rays, 1u);
-    
-    let scene_hit = left_ray.origin + left_ray.direction * t;
-    
-    let right_ray = Ray(scene.right_eye.xyz, normalize(scene_hit - scene.right_eye.xyz));
-    let right_t = trace_scene(right_ray);
-    
-    atomicAdd(&stats.total_rays, 1u); // count verification ray
-    
-    if (right_t < 0.0) { return; }
-    
-    let right_verify = right_ray.origin + right_ray.direction * right_t;
-    if (distance(scene_hit, right_verify) > 0.01) { return; }
-    
-    let right_uv = get_rect_intersect(scene_hit, scene.right_eye.xyz);
-
-
-    write_splat(seed_uv, seed_id);
-    write_splat(right_uv, seed_id);
-    
-    if (id.y == 0u) {
-    chain_direction(right_uv, seed_id, scene.right_eye.xyz, scene.left_eye.xyz);
-    } else {
-        chain_direction(seed_uv, seed_id, scene.left_eye.xyz, scene.right_eye.xyz);
-    }
-}*/
 
 @compute @workgroup_size(64) 
 fn cs(@builtin(global_invocation_id) id: vec3u) {
     let seed_id = id.x;
     if (seed_id >= u32(uniforms.seedCount)) { return; }
-
-    //  id.y encodes both which baseline and which chain direction
-    //   0 -> standard baseline :  chain right -> left
-    //   1 -> standard baseline :  chain left  -> right
-    //   2 -> rotated baseline  :  chain right -> left
-    //   3 -> rotated baseline  :  chain left  -> right
 
     if (id.y >= 4u) { return; }
 
@@ -299,11 +242,25 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
 
     let delta = 1.0 / f32(uniforms.seedCount);
 
-    let seed_uv = vec2f(
-        hash1(f32(seed_id + 0u)),
-        hash1(f32(seed_id + 0u) + 100.0)
-    ); // 0->1 : 0->0.4 : 0.3->0.7 narrow sampling maybe?
+    let spacing = 0.062 * (1.0 - 0.55 / (0.55 + 4.0)) / 0.60;
+    let row_height = sqrt(3.0 / 4.0) * spacing * (0.60 / 0.35); // correct for non-square UV
 
+    let num_cols = u32(ceil(1.0 / spacing)) + 1u;
+    let row = seed_id / num_cols;
+    let col = seed_id % num_cols;
+
+    let x_offset = select(0.0, spacing * 0.5, (row & 1u) == 1u);
+
+    //let seed_uv = vec2f(
+    //    f32(col) * spacing + x_offset,
+    //    f32(row) * row_height
+    //);
+
+    let seed_uv = vec2f(
+        hash1(f32(seed_id+1u)),
+        hash1(f32(seed_id+35u) + 100.0)
+    );
+    
     let world_pos = uv_to_world(seed_uv);
     let primary_ray = Ray(eye_a, normalize(world_pos - eye_a));
     let t = trace_scene(primary_ray);
@@ -326,7 +283,7 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
 
     let b_uv = get_rect_intersect(scene_hit, eye_b);
 
-    //write_splat(seed_uv, seed_id);
+    //write_splat(seed_uv, seed_id); //this will double splat the starting pair for troubleshooting 
     //write_splat(b_uv,    seed_id);
 
     // id.y even -> chain b->a : id.y odd -> chain a->b
