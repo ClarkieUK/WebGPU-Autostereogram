@@ -188,7 +188,7 @@ fn trace_scene(ray: Ray) -> f32 {
 fn chain_direction(start_uv: vec2f, seed_id: u32, from_eye: vec3f, to_eye: vec3f) {
     var current_uv = start_uv;
 
-    write_splat(current_uv, seed_id);
+    //write_splat(current_uv, seed_id);
     
     for (var iter = 0u; iter < 25u; iter++) {
         atomicAdd(&stats.chain_iterations, 1u);
@@ -243,7 +243,8 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     let delta = 1.0 / f32(uniforms.seedCount);
 
     let spacing = 0.062 * (1.0 - 0.55 / (0.55 + 4.0)) / 0.60;
-    let row_height = sqrt(3.0 / 4.0) * spacing * (0.60 / 0.35); // correct for non-square UV
+    let h = spacing * sin(radians(8));
+    let row_height = h * (0.60 / 0.35); // correct for non-square UV
 
     let num_cols = u32(ceil(1.0 / spacing)) + 1u;
     let row = seed_id / num_cols;
@@ -257,8 +258,8 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     //);
 
     let seed_uv = vec2f(
-        hash1(f32(seed_id+1u)),
-        hash1(f32(seed_id+35u) + 100.0)
+        f32(pcg(seed_id * 2654435761u)) / 4294967295.0,
+        f32(pcg(seed_id * 2246822519u)) / 4294967295.0
     );
     
     let world_pos = uv_to_world(seed_uv);
@@ -283,6 +284,8 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
 
     let b_uv = get_rect_intersect(scene_hit, eye_b);
 
+    if (b_uv.x < 0.0 || b_uv.x > 1.0 || b_uv.y < 0.0 || b_uv.y > 1.0) { return; }
+
     //write_splat(seed_uv, seed_id); //this will double splat the starting pair for troubleshooting 
     //write_splat(b_uv,    seed_id);
 
@@ -294,9 +297,22 @@ fn cs(@builtin(global_invocation_id) id: vec3u) {
     }
 }
 
-fn hash1(p: f32) -> f32 { 
-    var p_mut = fract(p * 0.1031);
-    p_mut *= p_mut + 33.33;
-    p_mut *= p_mut + p_mut;
-    return fract(p_mut);
+
+fn pcg(n: u32) -> u32 {
+    var h = n * 747796405u + 2891336453u;
+    h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
+    return (h >> 22u) ^ h;
+}
+
+fn hash1(p: f32) -> f32 {
+    return f32(pcg(bitcast<u32>(p))) / 4294967295.0;
+}
+
+fn hash3(p: f32) -> vec3f {
+    let n = bitcast<u32>(p);
+    return vec3f(
+        f32(pcg(n))           / 4294967295.0,
+        f32(pcg(n + 1u))      / 4294967295.0,
+        f32(pcg(n + 2u))      / 4294967295.0,
+    );
 }

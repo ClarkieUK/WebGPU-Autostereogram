@@ -34,8 +34,9 @@ export class Scene {
     this.rotatedLeftEyeData.set([0.0, 0.0, 0.0, 0.0]); // undefined until render loop calls...
     this.rotatedRightEyeData.set([0.0, 0.0, 0.0, 0.0]);
 
-    //generateSpheres(this.sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap);
-    generatePosterExample(this.sphereDataSpace, valuesPerSphere);
+    generateSpheres(this.sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap);
+    //generatePosterExample(this.sphereDataSpace, valuesPerSphere);
+    //generateSmile(this.sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap);
 
     this.sceneBuffer = device.createBuffer({
         label: 'scene storage',
@@ -97,13 +98,74 @@ function generatePosterExample(sphereDataSpace, valuesPerSphere) {
 
       const thisSphereData = sphereDataSpace.subarray(i * valuesPerSphere, (i+1) * valuesPerSphere)
 
+      //let x = (Math.random() > 0.5) ? 0.6 : -0.6;
       let x = 0.0;
       let y = 0.0;
-      let z = -1.5 * (i+1);
+      let z = -3.0 * (i+1);
 
-      let r =  0.32;
+      let r =  0.5;
 
       thisSphereData.set([x, y, z, r, 0.0, 0.0, 0.0, r])
   }
 };
+
+function generateSmile(sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap) {
+    let sphereIndex = 0;
+
+    const placeSphere = (x, y, z, r) => {
+        if (sphereIndex >= sphereCount) return;
+        const thisSphereData = sphereDataSpace.subarray(
+            sphereIndex * valuesPerSphere,
+            (sphereIndex + 1) * valuesPerSphere
+        );
+        thisSphereData.set([x, y, z, r, 0.0, 0.0, 0.0, r]);
+        sphereIndex++;
+    };
+
+    const baseZ = -sceneGap * scale * 0.5 - 2;
+    const faceRadius = scale * 0.8;
+    const sphereR = 0.08;
+    const jitter = () => (Math.random() - 0.5) * 0.08;
+
+    const faceCount = Math.floor(sphereCount * 0.45);
+    for (let i = 0; i < faceCount; i++) {
+        const angle = (i / faceCount) * Math.PI * 2;
+        const x = Math.cos(angle) * faceRadius + jitter();
+        const y = Math.sin(angle) * faceRadius + jitter();
+        const z = baseZ + jitter();
+        placeSphere(x, y, z, sphereR);
+    }
+
+    const eyeR = faceRadius * 0.18;
+    const eyeY = faceRadius * 0.3;
+    const eyeCount = Math.floor(sphereCount * 0.1);
+    for (let i = 0; i < eyeCount; i++) {
+        const angle = (i / eyeCount) * Math.PI * 2;
+        const x = -faceRadius * 0.35 + Math.cos(angle) * eyeR + jitter();
+        const y = eyeY + Math.sin(angle) * eyeR + jitter();
+        const z = baseZ + jitter();
+        placeSphere(x, y, z, sphereR);
+    }
+
+    for (let i = 0; i < eyeCount; i++) {
+        const angle = (i / eyeCount) * Math.PI * 2;
+        const x = faceRadius * 0.35 + Math.cos(angle) * eyeR + jitter();
+        const y = eyeY + Math.sin(angle) * eyeR + jitter();
+        const z = baseZ + jitter();
+        placeSphere(x, y, z, sphereR);
+    }
+
+    const smileCount = sphereCount - sphereIndex;
+    const smileRadius = faceRadius * 0.5;
+    const smileStartAngle = Math.PI * 1.15;  
+    const smileEndAngle   = Math.PI * 1.85;  
+    for (let i = 0; i < smileCount; i++) {
+        const t = i / (smileCount - 1);
+        const angle = smileStartAngle + t * (smileEndAngle - smileStartAngle);
+        const x = Math.cos(angle) * smileRadius + jitter();
+        const y = Math.sin(angle) * smileRadius - faceRadius * 0.1 + jitter();
+        const z = baseZ + jitter();
+        placeSphere(x, y, z, sphereR);
+    }
+}
 

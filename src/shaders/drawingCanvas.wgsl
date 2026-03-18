@@ -165,7 +165,7 @@ struct ourVsOutput {
 
     let frag_world_pos = (matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0)).xyz;
     
-    let sigma = 0.0023;
+    let sigma = 0.00075; // 0.0005
     let two_sigma_sq = 2.0 * sigma * sigma; 
     
     let cutoff_distance = 3.0 * sigma; 
@@ -221,14 +221,23 @@ struct ourVsOutput {
     return vec4f(color.rgb, 1.0);
 }
 
+
+
+fn pcg(n: u32) -> u32 {
+    var h = n * 747796405u + 2891336453u;
+    h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
+    return (h >> 22u) ^ h;
+}
+
 fn hash1(p: f32) -> f32 {
-    return fract(sin(p) * 43758.5453123);
+    return f32(pcg(bitcast<u32>(p))) / 4294967295.0;
 }
 
 fn hash3(p: f32) -> vec3f {
+    let n = bitcast<u32>(p);
     return vec3f(
-        hash1(p + 1.0),
-        hash1(p + 2.0),
-        hash1(p + 3.0)
+        f32(pcg(n))           / 4294967295.0,
+        f32(pcg(n + 1u))      / 4294967295.0,
+        f32(pcg(n + 2u))      / 4294967295.0,
     );
 }

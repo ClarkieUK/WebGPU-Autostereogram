@@ -33,20 +33,20 @@ async function main()
 {
     let COUPLED_EYES = 1
     let RENDER_SPHERES = 1 
-    let SIMULATING = 1
+    let SIMULATING = 0
 
     const MONITOR_WIDTH = 0.60 // 0.60m
     const MONITOR_HEIGHT = 0.35  // 0.35m
-    const MONITOR_RESOLUTION = [1920,1080]
-    const IPD = 0.062
+    const MONITOR_RESOLUTION = [2560,1440]
+    const IPD = 0.067//0.062
     const VIEWING_DISTANCE = 0.55 
-    const SCENE_GAP = 2; 
-    const numSpheres = 1;
+    const SCENE_GAP = 4; 
+    const numSpheres = 25;
 
     let smoothedAngle = 0;
     const SMOOTH = 0.05;
 
-    const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 2.0;
+    const backgroundPlaneDistance = VIEWING_DISTANCE + SCENE_GAP * 1.0;
     const recWidth =  MONITOR_WIDTH; 
     const recHeight = MONITOR_HEIGHT;
 
@@ -59,7 +59,7 @@ async function main()
         noise: 0,
         angle: 0,
         scaler: 1,
-        seedCount: 280,
+        seedCount: 1000,
         referenceBaseline: false,
         vrMode: false, 
     };
@@ -90,7 +90,7 @@ async function main()
 
     const gui = new GUI();
 
-    const scene = new Scene(device, IPD, VIEWING_DISTANCE, SCENE_GAP, 1.0, numSpheres);
+    const scene = new Scene(device, IPD, VIEWING_DISTANCE, SCENE_GAP, 1.5, numSpheres);
 
     // world geometries
     const sphereGeometry = new Sphere(20);
@@ -150,7 +150,7 @@ async function main()
     const m = mat4.identity();
 
     // Splat buffer
-    const maxSplats = 10000;
+    const maxSplats = 75000;
     const splatBufferSize = 4 + 12 + (maxSplats * 16); // atomic count + padding + points
 
     const splatStorageBuffer = device.createBuffer({
@@ -219,7 +219,7 @@ async function main()
 
     const physicsParams = new Float32Array(2);
     physicsParams[0] = 0.016; 
-    physicsParams[1] = 6.674e-3; 
+    physicsParams[1] = 6.674e-2; // fake G too speed things up a bit
     device.queue.writeBuffer(physicsParamsBuffer, 0, physicsParams);
 
     const physicsModule = device.createShaderModule({
@@ -453,7 +453,7 @@ async function main()
     gui.add(settings, 'logInterval', 1, 300)
         .name('interval')
         .onChange(value => profiler.setLogInterval(value));
-    gui.add(settings, 'noise', 1, 5000)
+    gui.add(settings, 'noise', 1, 30000)
         .name('noise count')
         .onChange(value => {
         settings.noise = value;
@@ -470,7 +470,7 @@ async function main()
         .onChange(value => {
         settings.scaler = -value;
     });
-    gui.add(settings, 'seedCount', 0, 5 * 64)
+    gui.add(settings, 'seedCount', 0, 50 * 64)
         .name('seed count')
         .onChange(value => {
         settings.seedCount = value;
