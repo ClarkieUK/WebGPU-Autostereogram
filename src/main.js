@@ -41,7 +41,7 @@ async function main()
     const IPD = 0.067//0.062
     const VIEWING_DISTANCE = 0.55 
     const SCENE_GAP = 4; 
-    const numSpheres = 25;
+    const numSpheres = 10;
 
     let smoothedAngle = 0;
     const SMOOTH = 0.05;
@@ -59,7 +59,7 @@ async function main()
         noise: 0,
         angle: 0,
         scaler: 1,
-        seedCount: 1000,
+        seedCount: 800,
         referenceBaseline: false,
         vrMode: false, 
     };
@@ -300,8 +300,8 @@ async function main()
     const t = mat4.translate(m, [0, 0, 0]);    // operate t first so its applied last
     const s = mat4.scale(t, [1, 1, 1]);  
     const r = mat4.rotateZ(s, 0);    
-    const origin_model_matrix = r;
-
+    const origin_model_matrix = r; // this is kinda just here, I dont use it anywhere but whatever
+                                   // might use it for debugging at times
     let t0, t1, t2, t3
 
     async function render() {
@@ -447,6 +447,9 @@ async function main()
         requestAnimationFrame(render);
     };
 
+
+    // this is absolutely HORRIFIC, but I dont know how tf imgui even works
+    // so I have no idea how im supposed to strucutre it in the code, I just dont look here 
     gui.add(settings, 'enableProfiling')
         .name('profiling')
         .onChange(value => profiler.setEnabled(value));

@@ -34,8 +34,8 @@ export class Scene {
     this.rotatedLeftEyeData.set([0.0, 0.0, 0.0, 0.0]); // undefined until render loop calls...
     this.rotatedRightEyeData.set([0.0, 0.0, 0.0, 0.0]);
 
-    generateSpheres(this.sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap);
-    //generatePosterExample(this.sphereDataSpace, valuesPerSphere);
+    //generateSpheres(this.sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap);
+    generatePosterExample(this.sphereDataSpace, valuesPerSphere);
     //generateSmile(this.sphereDataSpace, sphereCount, valuesPerSphere, scale, sceneGap);
 
     this.sceneBuffer = device.createBuffer({

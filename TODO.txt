@@ -1,14 +1,9 @@
-- modularise all code into software ish packaging, getting frustrating moving around the main file now...
-
 - somehow solve this fucking invariant rotation stereogram, I cant believe how hard this problem is to solve,
-perhaps impossible. gl to me in the future...
+- really need to integrate all of the scene components into their own manager in sceneManager, the physics engine 
+  should only really interact in there aswell
 
 
-
-
-
-
-- Images to create and save;
+- Images to create and save for project writeup;
 
     - Sandbox Overview
     
@@ -22,7 +17,7 @@ perhaps impossible. gl to me in the future...
     - GPU Benchmarks                    (Done)
     - Maybe NSight Misses               - Get information not graph I guess
 
-    - N-Body Star Formation     
+    - N-Body Pseudo Star Formation     
     - SNR Before & After                (Done)
     - Rotation Correlation Issue        (Done)
     - Parrallelogram Geometry Subset    
