@@ -53,8 +53,8 @@ async function main()
     const {device, canvas, context, format: presentationFormat} = await initWebGPU();
 
     const settings = {
-        enableProfiling: true,
-        enableCpuProfiling: true,
+        enableProfiling: false,
+        enableCpuProfiling: false,
         logInterval: 60,
         noise: 0,
         angle: 0,
