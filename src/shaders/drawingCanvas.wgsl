@@ -165,7 +165,7 @@ struct ourVsOutput {
 
     let frag_world_pos = (matrixUniforms.model * vec4f(vertex_pos, 0.0, 1.0)).xyz;
     
-    let sigma = 0.0005 * 3; // 0.0005
+    let sigma = 0.0005 * 3.0; // 0.0005
     let two_sigma_sq = 2.0 * sigma * sigma; 
     
     let cutoff_distance = 3.0 * sigma; 

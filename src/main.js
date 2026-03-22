@@ -59,7 +59,7 @@ async function main()
         noise: 0,
         angle: 0,
         scaler: 1,
-        seedCount: 800,
+        seedCount: 600,
         referenceBaseline: false,
         vrMode: false, 
     };
@@ -72,7 +72,7 @@ async function main()
             address === '/gyrosc/gyro') {
             if (settings.vrMode) {
                 const raw = args[1] * 180/Math.PI; // get args from either output on terminal or devdocs
-                smoothedAngle += (raw - smoothedAngle) * SMOOTH;
+                smoothedAngle += (raw - smoothedAngle) * SMOOTH; 
                 settings.angle = smoothedAngle;
             }
         }
@@ -150,7 +150,7 @@ async function main()
     const m = mat4.identity();
 
     // Splat buffer
-    const maxSplats = 75000;
+    const maxSplats = 25000;
     const splatBufferSize = 4 + 12 + (maxSplats * 16); // atomic count + padding + points
 
     const splatStorageBuffer = device.createBuffer({
