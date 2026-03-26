@@ -7,5 +7,5 @@
 | <kbd>**Mouse Move**</kbd> | Look around |
 | <kbd>**Scroll Wheel**</kbd> | Zoom |
 | <kbd>**I**</kbd> | Start / pause simulation |
-| <kbd>**O</kbd>  | Toggle sphere rendering |
+| <kbd>**O**</kbd>  | Toggle sphere rendering |
 | <kbd>**P**</kbd> | Decouple eyes |
