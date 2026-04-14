@@ -59,7 +59,7 @@ async function main()
         noise: 0,
         angle: 0,
         scaler: 1,
-        seedCount: 600,
+        seedCount: 25,
         referenceBaseline: false,
         vrMode: false, 
     };
